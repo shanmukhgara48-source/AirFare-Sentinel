@@ -1,0 +1,82 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'IBM Plex Serif', ui-serif, Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Cool, blue-biased neutrals */
+  --color-ground: #eef1f6;
+  --color-surface: #ffffff;
+  --color-line: #dde3ec;
+  --color-ink: #0f1b2a;
+  --color-muted: #5a6b80;
+
+  /* Primary accent: deep petrol teal */
+  --color-accent: #0b6e6e;
+  --color-accent-soft: #e3f0ef;
+
+  /* Semantic */
+  --color-ok: #15803d;
+  --color-warn: #b45309;
+  --color-alert: #c2410c;
+}
+
+html {
+  background: var(--color-ground);
+}
+
+body {
+  margin: 0;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Figures line up in columns everywhere in this app */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Main content scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-ground);
+}
+::-webkit-scrollbar-thumb {
+  background: #c0ccda;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8b7c9;
+}
+
+/* Dark sidebar scrollbar */
+aside::-webkit-scrollbar-track {
+  background: #0f1e33;
+}
+aside::-webkit-scrollbar-thumb {
+  background: #1e3450;
+  border-radius: 4px;
+}
+aside::-webkit-scrollbar-thumb:hover {
+  background: #2a4668;
+}
+
+/* Premium table row hover */
+.table-row-hover:hover {
+  background: rgba(11, 110, 110, 0.03);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

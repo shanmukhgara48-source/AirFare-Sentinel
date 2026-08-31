@@ -37,12 +37,17 @@ function CaseFileModal({ spike, onClose }: { spike: Spike; onClose: () => void }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[8vh]">
-      <div className="w-full max-w-[680px] rounded-lg border border-line bg-white shadow-xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="case-file-title"
+        className="w-full max-w-[680px] rounded-lg border border-line bg-white shadow-xl"
+      >
         {/* Header */}
         <header className="flex items-start justify-between border-b border-line px-6 py-4">
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="font-serif text-[20px] font-semibold tracking-tight">
+              <h2 id="case-file-title" className="font-serif text-[20px] font-semibold tracking-tight">
                 FarePulse Case File
               </h2>
               <Pill tone={spike.direction === 'spike' ? 'alert' : 'ok'}>
@@ -238,7 +243,8 @@ function CaseFileModal({ spike, onClose }: { spike: Spike; onClose: () => void }
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {[
                 { label: 'Observation ID', value: String(spike.observation_id ?? '—') },
-                { label: 'Data source', value: 'Synthetic CSV (ingestion pipeline)' },
+                { label: 'Data source', value: spike.source_label },
+                { label: 'Provider', value: spike.provider ?? 'Not applicable' },
                 { label: 'Cell definition', value: 'route × airline × fare class × lead-time bucket' },
                 { label: 'Detection formula', value: 'robust_z = 0.6745 × (ln(fare) − median(ln fare)) / MAD', mono: true },
                 { label: 'Threshold', value: 'Robust z > 3.5 AND ≥ 25% from cell median' },
@@ -269,7 +275,7 @@ function CaseFileModal({ spike, onClose }: { spike: Spike; onClose: () => void }
 
         {/* Footer */}
         <footer className="border-t border-line px-6 py-3 text-[11px] text-muted">
-          FarePulse · Anomaly ID {spike.observation_id ?? '—'} · Generated from synthetic sample data
+          FarePulse · Anomaly ID {spike.observation_id ?? '—'} · {spike.source_label}
         </footer>
       </div>
     </div>
@@ -433,7 +439,11 @@ export default function Spikes() {
             <Field label="Sensitivity (robust z)">
               <Select
                 value={threshold}
-                onChange={setThreshold}
+                onChange={(value) => {
+                  setLoading(true)
+                  setError('')
+                  setThreshold(value)
+                }}
                 options={[
                   { value: '2.5', label: '2.5 — more sensitive' },
                   { value: '3.5', label: '3.5 — default' },

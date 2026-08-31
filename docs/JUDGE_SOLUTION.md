@@ -8,7 +8,7 @@
 
 > We built a price index for domestic airfares using the same statistical
 > methods that national statistical offices use for consumer price indices —
-> comparing only like with like, weighting by passenger traffic, and
+> comparing only like with like, using illustrative traffic weights, and
 > detecting anomalies without being fooled by booking-mix effects.
 
 ---
@@ -47,6 +47,8 @@ Cells are combined into a national headline using **fixed illustrative traffic
 weights**. The Delhi-Mumbai corridor carries 14% of the prototype basket. These
 are modelling assumptions, not current official DGCA route shares; production
 publication requires calibration with current traffic data.
+Each route's fixed weight is allocated equally across its observed carriers so
+routes with broader carrier coverage do not gain extra influence.
 
 ```
 APIx[t] = 100 × Σ (Weight[cell] × Price Relative[cell])
@@ -58,7 +60,7 @@ fares have fallen.
 ### 4. Dual publication (weighted + unweighted)
 
 We publish **two lines** on every chart:
-- **Weighted Laspeyres** (headline) — reflects actual traffic patterns
+- **Weighted Laspeyres** (headline) — reflects the prototype traffic-weight assumptions
 - **Unweighted Jevons** (sensitivity) — treats every cell equally
 
 When they diverge, it tells us whether price movements are concentrated on
@@ -83,7 +85,7 @@ forward**. We report the coverage gap and flag it:
 - **4** fictional carriers, **4** fare classes, **5** lead-time buckets
 - **1,120** comparability cells
 - **4-component price anatomy:** base + surcharge + taxes + airport charges
-- **12 validation rules** with named rejection reasons
+- **Named validation rules** with explicit rejection reasons
 
 ### Index engine
 - Weighted Laspeyres headline + unweighted Jevons sensitivity
@@ -107,7 +109,7 @@ forward**. We report the coverage gap and flag it:
 - Professional design system (IBM Plex fonts, teal/grey palette)
 
 ### Quality assurance
-- **447 automated tests** across 14 focused test modules
+- **463 automated tests plus 33 subtests** across 14 focused test modules
 - 5 statistical properties verified: identity, proportionality,
   commensurability, permutation invariance, weight conservation
 - Full integration test: generate → validate → index → spikes → contributions
@@ -125,7 +127,7 @@ forward**. We report the coverage gap and flag it:
 | Missing data | Carry forward or impute | Never — report gap honestly |
 | Anomaly detection | Mean + stddev | Median + MAD (outlier-resistant) |
 | Price anatomy | Lump sum | 4 components (base, surcharge, taxes, airport) |
-| Transparency | Black box | Reproducible by hand; 447 tests verify |
+| Transparency | Black box | Reproducible by hand; 463 tests plus 33 subtests verify |
 
 ---
 

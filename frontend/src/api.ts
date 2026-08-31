@@ -111,6 +111,9 @@ export interface Spike {
   explanation: string
   recommended_action: string
   impact_score: number
+  source_type: 'demo' | 'imported' | 'live'
+  provider: string | null
+  source_label: string
   // Event sensitivity layer
   event_tag: string | null
   event_category: string | null
@@ -201,6 +204,9 @@ export interface LiveFetchStatus {
   operating_mode: 'demo' | 'live' | 'demo_fallback'
   mode_label: string
   mode_notice: string
+  active_live_provider: string | null
+  configured_live_provider: string | null
+  /** Backward-compatible aliases returned by older backends. */
   active_provider: string | null
   configured_provider?: string | null
   message?: string
@@ -359,6 +365,8 @@ export const api = {
   providerStatus: () =>
     request<{
       providers: { provider: string; configured: boolean; requires_credentials: boolean; message: string; setup_instructions?: string[] }[]
+      live_provider_configured: boolean
+      live_fetch_enabled: boolean
       live_data_available: boolean
       active_live_provider: string | null
       demo_fallback: boolean
@@ -429,6 +437,7 @@ export interface RouteCompetition {
 export interface CompetitionData {
   empty: boolean
   message?: string
+  data_source?: string
   summary: {
     healthy_count: number
     watch_count: number

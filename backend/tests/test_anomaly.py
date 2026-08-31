@@ -163,6 +163,8 @@ class TestCaseFileClassification(unittest.TestCase):
         self.assertIn(s["reason_code"], REASON_GLOSSARY)
         self.assertIn("₹", s["explanation"])
         self.assertGreater(len(s["recommended_action"]), 10)
+        self.assertEqual(s["source_type"], "imported")
+        self.assertEqual(s["source_label"], "Imported dataset")
 
     def test_explain_spike_includes_reason_detail(self):
         entry = {

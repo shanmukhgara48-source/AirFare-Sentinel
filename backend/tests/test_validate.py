@@ -77,6 +77,54 @@ class TestRejections(unittest.TestCase):
         self.assertEqual(accepted, [])
         self.assertTrue(quarantined[0]["reject_reason"].startswith("MISSING_COLUMNS"))
 
+    def test_invalid_optional_total_is_not_silently_ignored(self):
+        accepted, quarantined = validate_rows(csv_of(
+            "DEL,BOM,SA1,2026-09-20,2026-09-01,ECONOMY_SAVER,4000,840,not-a-number"
+        ))
+        self.assertEqual(accepted, [])
+        self.assertTrue(quarantined[0]["reject_reason"].startswith("SCHEMA_ERROR"))
+        self.assertIn("not-a-number", quarantined[0]["raw_row"])
+
+    def test_non_finite_fare_is_rejected(self):
+        reason = self._reason(
+            "DEL,BOM,SA1,2026-09-20,2026-09-01,ECONOMY_SAVER,nan,840,4840"
+        )
+        self.assertTrue(reason.startswith("SCHEMA_ERROR"))
+
+    def test_invalid_airline_code_is_rejected(self):
+        reason = self._reason(
+            "DEL,BOM,,2026-09-20,2026-09-01,ECONOMY_SAVER,4000,840,4840"
+        )
+        self.assertEqual(reason, "INVALID_AIRLINE_CODE")
+
+    def test_invalid_granular_component_is_quarantined(self):
+        header = (
+            "origin,destination,airline,travel_date,quote_date,fare_class,"
+            "base_fare,taxes_fees,total_fare,airline_surcharge,statutory_taxes,airport_charges"
+        )
+        row = (
+            "DEL,BOM,SA1,2026-09-20,2026-09-01,ECONOMY_SAVER,"
+            "4000,840,4840,bad,500,340"
+        )
+        accepted, quarantined = validate_rows(f"{header}\n{row}\n")
+        self.assertEqual(accepted, [])
+        self.assertTrue(quarantined[0]["reject_reason"].startswith("SCHEMA_ERROR"))
+
+    def test_granular_components_must_match_aggregate_fees(self):
+        header = (
+            "origin,destination,airline,travel_date,quote_date,fare_class,"
+            "base_fare,taxes_fees,total_fare,airline_surcharge,statutory_taxes,airport_charges"
+        )
+        row = (
+            "DEL,BOM,SA1,2026-09-20,2026-09-01,ECONOMY_SAVER,"
+            "4000,840,4840,100,200,300"
+        )
+        accepted, quarantined = validate_rows(f"{header}\n{row}\n")
+        self.assertEqual(accepted, [])
+        self.assertTrue(
+            quarantined[0]["reject_reason"].startswith("COMPONENTS_DO_NOT_RECONCILE")
+        )
+
     def test_empty_file(self):
         _, quarantined = validate_rows("")
         self.assertEqual(quarantined[0]["reject_reason"], "EMPTY_FILE")

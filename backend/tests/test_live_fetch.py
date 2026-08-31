@@ -66,6 +66,19 @@ class TestValidateLiveQuotes(unittest.TestCase):
         self.assertEqual(row["flight_number"], "AI101")
         self.assertEqual(row["offer_id"], "off-abc123")
 
+    def test_inconsistent_provider_total_is_quarantined(self):
+        _, quarantined = validate_live_quotes([
+            self._make_quote(total_fare=9999.0)
+        ])
+        self.assertEqual(len(quarantined), 1)
+        self.assertIn("COMPONENTS_DO_NOT_RECONCILE", quarantined[0]["reject_reason"])
+
+    def test_provider_cannot_override_live_provenance(self):
+        accepted, _ = validate_live_quotes([
+            self._make_quote(source_type="demo")
+        ])
+        self.assertEqual(accepted[0]["source_type"], "live")
+
     def test_invalid_fare_class_is_quarantined(self):
         _, quarantined = validate_live_quotes([self._make_quote(fare_class="FIRST_CLASS")])
         self.assertEqual(len(quarantined), 1)
@@ -230,6 +243,8 @@ class TestLiveFetchStatusEndpoint(unittest.TestCase):
     def test_has_live_provider_configured_flag(self):
         body = client.get("/api/admin/live-fetch/status").json()
         self.assertIn("live_provider_configured", body)
+        self.assertIn("active_live_provider", body)
+        self.assertIn("configured_live_provider", body)
 
     def test_has_message_when_no_fetch_run(self):
         # Status may or may not have a result depending on test order;

@@ -72,8 +72,8 @@ def fetch_live_fares(
                 )
             except ProviderError as exc:
                 log.warning(
-                    "live_fetch: provider error %s +%dd: %s",
-                    route_tag, lead_days, exc,
+                    "live_fetch: provider error %s +%dd (%s)",
+                    route_tag, lead_days, type(exc).__name__,
                 )
                 errors.append({
                     "route": route_tag,
@@ -82,13 +82,13 @@ def fetch_live_fares(
                 })
             except Exception as exc:  # noqa: BLE001 — isolate per-route failures
                 log.error(
-                    "live_fetch: unexpected error %s +%dd: %s",
-                    route_tag, lead_days, exc,
+                    "live_fetch: unexpected error %s +%dd (%s)",
+                    route_tag, lead_days, type(exc).__name__,
                 )
                 errors.append({
                     "route": route_tag,
                     "lead_days": lead_days,
-                    "error": f"Unexpected: {exc}",
+                    "error": f"Unexpected provider failure ({type(exc).__name__})",
                 })
 
     return {

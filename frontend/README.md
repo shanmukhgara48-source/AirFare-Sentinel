@@ -16,7 +16,12 @@ Verification commands:
 ```bash
 npm run lint
 npm run build
+# With backend and frontend dev servers running:
+npm run smoke
 ```
+
+The smoke command visits all 10 routes with Judge Mode enabled and fails on
+browser console warnings/errors, page exceptions, or unsuccessful API calls.
 
 Pages are route-level lazy chunks. The shared shell reports operating mode and
 stored-data provenance independently so Demo, Imported, Live, and Hybrid states

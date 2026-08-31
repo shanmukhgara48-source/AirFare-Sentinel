@@ -8,18 +8,21 @@ import {
   type LiveFetchStatus,
   type ObservationRow,
 } from '../api'
-import { Button, Card, ErrorNote, Pill, StatTile } from '../components/ui'
+import { Button, Card, ErrorNote, JudgePanel, Pill, StatTile } from '../components/ui'
+import { useJudgeMode } from '../context/judgeModeContext'
 
 const PAGE_SIZE = 25
 
 function LiveFetchCard({
   status,
   liveResult,
+  statusError,
   busy,
   onFetch,
 }: {
   status: LiveFetchStatus | null
   liveResult: LiveFetchResult | null
+  statusError: string
   busy: string
   onFetch: (quick: boolean) => void
 }) {
@@ -27,13 +30,29 @@ function LiveFetchCard({
   const isEnabled = status?.live_fetch_enabled ?? false
   const lastResult = liveResult ?? (status?.has_result ? status : null)
 
+  if (status === null) {
+    return (
+      <Card
+        title="Live fare fetch"
+        subtitle="Credential-gated provider ingestion; disabled while Demo Mode is active"
+        action={<Pill tone={statusError ? 'alert' : 'neutral'}>{statusError ? 'Status unavailable' : 'Checking provider'}</Pill>}
+      >
+        <p className="text-[13px] leading-relaxed text-muted">
+          {statusError
+            ? 'Provider readiness could not be verified. Live fetch controls remain unavailable, and no live-data claim is being made.'
+            : 'Checking operating mode and provider readiness. No live-data claim is made until status is confirmed.'}
+        </p>
+      </Card>
+    )
+  }
+
   return (
     <Card
       title="Live fare fetch"
       subtitle="Credential-gated provider ingestion; disabled while Demo Mode is active"
       action={
         isEnabled ? (
-          <Pill tone="ok">Provider active: {status?.active_provider}</Pill>
+          <Pill tone="ok">Provider active: {status?.active_live_provider ?? status?.active_provider}</Pill>
         ) : isConfigured ? (
           <Pill tone="warn">Provider ready · Demo Mode</Pill>
         ) : (
@@ -110,6 +129,7 @@ function LiveFetchCard({
 }
 
 export default function Admin() {
+  const { judgeMode } = useJudgeMode()
   const [result, setResult] = useState<IngestResult | null>(null)
   const [liveResult, setLiveResult] = useState<LiveFetchResult | null>(null)
   const [liveStatus, setLiveStatus] = useState<LiveFetchStatus | null>(null)
@@ -161,12 +181,17 @@ export default function Admin() {
   }, [page])
 
   useEffect(() => {
+    let cancelled = false
     api.liveFetchStatus()
       .then((status) => {
+        if (cancelled) return
         setLiveStatus(status)
         setProviderError('')
       })
-      .catch((e: Error) => setProviderError(`Provider status is unavailable: ${e.message}`))
+      .catch((e: Error) => {
+        if (!cancelled) setProviderError(`Provider status is unavailable: ${e.message}`)
+      })
+    return () => { cancelled = true }
   }, [])
 
   const run = async (label: string, fn: () => Promise<IngestResult | { message: string }>) => {
@@ -200,6 +225,33 @@ export default function Admin() {
           validation and what did not.
         </p>
       </header>
+
+      {judgeMode && (
+        <JudgePanel items={[
+          {
+            q: 'What mode is active?',
+            a: liveStatus
+              ? `${liveStatus.mode_label}. ${liveStatus.mode_notice}`
+              : 'Provider status is still being checked; no live-data claim is being made.',
+          },
+          {
+            q: 'What data is stored?',
+            a: `${total.toLocaleString()} observations across ${batches.length} ingestion batch${batches.length === 1 ? '' : 'es'}. Each observation retains Demo, Imported, or Live provenance.`,
+          },
+          {
+            q: 'Is live fetch ready?',
+            a: liveStatus?.live_fetch_enabled
+              ? `Yes. ${liveStatus.active_live_provider ?? liveStatus.active_provider ?? 'The configured provider'} is enabled; fetched values will be stored as quote snapshots, not forecasts.`
+              : liveStatus?.live_provider_configured
+                ? 'Credentials are configured, but Demo Mode is intentionally blocking provider calls.'
+                : 'No live provider credentials are configured. The stable demo/import path remains available.',
+          },
+          {
+            q: 'What should the team do before judging?',
+            a: 'Load the bundled sample, confirm zero unexpected quarantines, verify the mode and dataset labels, and enable live mode only after provider credentials and a successful status check are confirmed.',
+          },
+        ]} />
+      )}
 
       {error && <ErrorNote message={error} />}
       {providerError && <ErrorNote message={providerError} />}
@@ -273,6 +325,7 @@ export default function Admin() {
       <LiveFetchCard
         status={liveStatus}
         liveResult={liveResult}
+        statusError={providerError}
         busy={busy}
         onFetch={async (quick) => {
           setBusy('live')

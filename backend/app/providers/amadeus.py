@@ -51,7 +51,10 @@ class AmadeusProvider(FareProvider):
         self._token_expiry: float = 0.0
 
     def is_configured(self) -> bool:
-        return bool(settings.amadeus_client_id and settings.amadeus_client_secret)
+        return bool(
+            settings.amadeus_client_id.strip()
+            and settings.amadeus_client_secret.strip()
+        )
 
     def status(self) -> dict:
         if not self.is_configured():
@@ -71,7 +74,7 @@ class AmadeusProvider(FareProvider):
                     "2. Create an app in the developer portal",
                     "3. Copy client_id and client_secret from the app settings",
                     "4. Add to your .env file: AMADEUS_CLIENT_ID=... and AMADEUS_CLIENT_SECRET=...",
-                    "5. Restart the backend: uvicorn app.main:app --reload",
+                    "5. Restart the backend: python -m uvicorn app.main:app --reload",
                 ],
                 "live_coverage_note": (
                     "The Amadeus test environment has limited coverage of Indian domestic routes. "
@@ -194,9 +197,22 @@ class AmadeusProvider(FareProvider):
         normalized = []
         for offer in offers:
             try:
-                normalized.extend(self._normalize_offer(offer, quote_date))
+                normalized.extend(
+                    self._normalize_offer(
+                        offer,
+                        quote_date,
+                        requested_origin=origin,
+                        requested_destination=destination,
+                        requested_adults=adults,
+                    )
+                )
             except Exception as exc:
-                logger.warning("Skipping malformed Amadeus offer: %s", exc)
+                # Provider payloads can contain opaque identifiers.  Log only
+                # the failure class so neither credentials nor raw offers can
+                # leak through exception text.
+                logger.warning(
+                    "Skipping malformed Amadeus offer (%s)", type(exc).__name__
+                )
 
         logger.info(
             "Amadeus: %d offers → %d observations for %s-%s on %s",
@@ -204,17 +220,32 @@ class AmadeusProvider(FareProvider):
         )
         return normalized
 
-    def _normalize_offer(self, offer: dict, quote_date: str) -> list[dict]:
+    def _normalize_offer(
+        self,
+        offer: dict,
+        quote_date: str,
+        *,
+        requested_origin: str,
+        requested_destination: str,
+        requested_adults: int = 1,
+    ) -> list[dict]:
         """
-        Convert one Amadeus flight offer to a list of normalized observation dicts.
+        Convert one one-way Amadeus offer into one comparable quote snapshot.
 
-        Each leg × each traveler pricing combination becomes one observation.
-        Unmappable or out-of-range fares are silently skipped.
+        Amadeus prices apply to the complete itinerary, not to each connection
+        segment.  Emitting one row per segment would duplicate the full fare
+        and mislabel a DEL-BOM itinerary via HYD as two point-to-point fares.
+        We therefore retain the searched origin/destination and store the
+        segment flight numbers together as provenance.
         """
-        from datetime import date
         from app.model import (
-            normalize_code, lead_bucket, compute_lead_days, parse_iso_date,
-            MIN_PLAUSIBLE_FARE, MAX_PLAUSIBLE_FARE,
+            FARE_CLASS_RANK,
+            MAX_PLAUSIBLE_FARE,
+            MIN_PLAUSIBLE_FARE,
+            compute_lead_days,
+            lead_bucket,
+            normalize_code,
+            parse_iso_date,
         )
 
         # Cabin → fare_class mapping. Unknown cabins default to ECONOMY_SAVER.
@@ -225,72 +256,90 @@ class AmadeusProvider(FareProvider):
             "FIRST": "BUSINESS",   # map First to BUSINESS for this schema
         }
 
-        results = []
         q_date = parse_iso_date(quote_date)
+        itineraries = offer.get("itineraries") or []
+        if not itineraries:
+            return []
+        segments = itineraries[0].get("segments") or []
+        if not segments:
+            return []
 
-        for itinerary in offer.get("itineraries", []):
-            for segment in itinerary.get("segments", []):
-                dep_str = segment["departure"]["at"][:10]  # "YYYY-MM-DDTHH:MM" → "YYYY-MM-DD"
-                try:
-                    travel_date = parse_iso_date(dep_str)
-                except (ValueError, AttributeError):
-                    continue
+        dep_str = segments[0]["departure"]["at"][:10]
+        travel_date = parse_iso_date(dep_str)
+        ld = compute_lead_days(travel_date, q_date)
+        if ld < 0:
+            return []
 
-                ld = compute_lead_days(travel_date, q_date)
-                if ld < 0:
-                    continue  # quote after departure — skip
+        origin = normalize_code(segments[0]["departure"]["iataCode"])
+        destination = normalize_code(segments[-1]["arrival"]["iataCode"])
+        if (
+            origin != normalize_code(requested_origin)
+            or destination != normalize_code(requested_destination)
+        ):
+            return []
 
-                seg_origin = normalize_code(segment["departure"]["iataCode"])
-                seg_dest = normalize_code(segment["arrival"]["iataCode"])
-                carrier = normalize_code(segment.get("carrierCode", ""))
-                flight_number = f"{segment.get('carrierCode','')}{segment.get('number','')}"
-                seg_id = segment.get("id", "")
+        validating = offer.get("validatingAirlineCodes") or []
+        carrier = normalize_code(
+            validating[0] if validating else segments[0].get("carrierCode", "")
+        )
+        flight_number = "/".join(
+            f"{segment.get('carrierCode', '')}{segment.get('number', '')}"
+            for segment in segments
+        )
 
-                price = offer.get("price", {})
-                total_str = price.get("grandTotal") or price.get("total", "0")
-                try:
-                    total_fare = float(total_str)
-                except (ValueError, TypeError):
-                    continue
+        price = offer.get("price", {})
+        total_value = float(price.get("grandTotal") or price.get("total", "0"))
+        traveler_pricings = offer.get("travelerPricings") or []
+        traveler_count = len(traveler_pricings) or max(1, requested_adults)
+        total_fare = round(total_value / traveler_count, 2)
+        if not (MIN_PLAUSIBLE_FARE <= total_fare <= MAX_PLAUSIBLE_FARE):
+            return []
 
-                if not (MIN_PLAUSIBLE_FARE <= total_fare <= MAX_PLAUSIBLE_FARE):
-                    continue
+        base_value = price.get("base")
+        try:
+            base_fare = (
+                round(float(base_value) / traveler_count, 2)
+                if base_value not in (None, "")
+                else round(total_fare * 0.55, 2)
+            )
+        except (ValueError, TypeError):
+            base_fare = round(total_fare * 0.55, 2)
+        taxes_fees = round(total_fare - base_fare, 2)
+        if taxes_fees < 0:
+            return []
 
-                base_str = price.get("base", "")
-                try:
-                    base_fare = float(base_str) if base_str else round(total_fare * 0.55, 2)
-                except (ValueError, TypeError):
-                    base_fare = round(total_fare * 0.55, 2)
-                taxes_fees = round(total_fare - base_fare, 2)
+        segment_ids = {segment.get("id") for segment in segments}
+        mapped_classes = []
+        if traveler_pricings:
+            for detail in traveler_pricings[0].get("fareDetailsBySegment", []):
+                if detail.get("segmentId") in segment_ids:
+                    cabin = str(detail.get("cabin", "ECONOMY")).upper()
+                    mapped_classes.append(_CABIN_MAP.get(cabin, "ECONOMY_SAVER"))
+        fare_class = max(
+            mapped_classes or ["ECONOMY_SAVER"],
+            key=lambda value: FARE_CLASS_RANK[value],
+        )
 
-                for tp in offer.get("travelerPricings", []):
-                    for fd in tp.get("fareDetailsBySegment", []):
-                        if fd.get("segmentId") != seg_id:
-                            continue
-                        cabin = fd.get("cabin", "ECONOMY").upper()
-                        fare_class = _CABIN_MAP.get(cabin, "ECONOMY_SAVER")
-
-                        results.append({
-                            "origin": seg_origin,
-                            "destination": seg_dest,
-                            "airline": carrier,
-                            "travel_date": dep_str,
-                            "quote_date": quote_date,
-                            "lead_days": ld,
-                            "lead_bucket": lead_bucket(ld),
-                            "fare_class": fare_class,
-                            "base_fare": round(base_fare, 2),
-                            "airline_surcharge": 0.0,
-                            "statutory_taxes": round(taxes_fees * 0.65, 2),
-                            "airport_charges": round(taxes_fees * 0.35, 2),
-                            "taxes_fees": round(taxes_fees, 2),
-                            "total_fare": total_fare,
-                            # Extended fields for snapshot storage
-                            "source_type": "live",
-                            "provider": self.name,
-                            "flight_number": flight_number,
-                            "offer_id": offer.get("id", ""),
-                            "offer_expiry": offer.get("lastTicketingDateTime", ""),
-                        })
-
-        return results
+        statutory_taxes = round(taxes_fees * 0.65, 2)
+        airport_charges = round(taxes_fees - statutory_taxes, 2)
+        return [{
+            "origin": origin,
+            "destination": destination,
+            "airline": carrier,
+            "travel_date": dep_str,
+            "quote_date": quote_date,
+            "lead_days": ld,
+            "lead_bucket": lead_bucket(ld),
+            "fare_class": fare_class,
+            "base_fare": base_fare,
+            "airline_surcharge": 0.0,
+            "statutory_taxes": statutory_taxes,
+            "airport_charges": airport_charges,
+            "taxes_fees": taxes_fees,
+            "total_fare": total_fare,
+            "source_type": "live",
+            "provider": self.name,
+            "flight_number": flight_number,
+            "offer_id": offer.get("id", ""),
+            "offer_expiry": offer.get("lastTicketingDateTime", ""),
+        }]

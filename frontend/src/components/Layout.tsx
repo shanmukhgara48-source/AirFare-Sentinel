@@ -101,15 +101,19 @@ export default function Layout() {
   const [systemStatus, setSystemStatus] = useState<'loading' | 'ready' | 'error'>('loading')
 
   useEffect(() => {
+    let cancelled = false
     api.version()
       .then((version) => {
+        if (cancelled) return
         setSystem(version)
         setSystemStatus('ready')
       })
       .catch(() => {
+        if (cancelled) return
         setSystem(null)
         setSystemStatus('error')
       })
+    return () => { cancelled = true }
   }, [])
 
   const allNavFlat: readonly NavEntry[] = [...NAV_MAIN, ...NAV_VIEWS, ...NAV_SYS]

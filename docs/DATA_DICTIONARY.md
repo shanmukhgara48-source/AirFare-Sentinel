@@ -179,6 +179,10 @@ The sample dataset yields 14 routes × 4 carriers × 4 classes × 5 buckets = **
 | Short-haul business | BLR↔HYD | 4% | 8% |
 | Regional | DEL↔MAA | 5% | 10% |
 
+At index time, each route weight is allocated equally across the carriers
+observed on that route, then across lead-time buckets and fare classes. This
+keeps route influence fixed when carrier coverage differs.
+
 Weights are **fixed** for the index window (Laspeyres property). They sum to 1.0.
 The cell weight is the product of three dimensions:
 
@@ -229,11 +233,12 @@ is ever silently dropped, which is what makes an ingest auditable.
 | `SCHEMA_ERROR` | A field could not be parsed to its type. |
 | `INVALID_AIRPORT_CODE` | Not three alphabetic characters. |
 | `ORIGIN_EQUALS_DESTINATION` | Not a route. |
+| `INVALID_AIRLINE_CODE` | Carrier code is not 2–3 alphanumeric characters. |
 | `INVALID_FARE_CLASS` | Outside the controlled vocabulary. |
 | `NON_POSITIVE_FARE` | `base_fare ≤ 0` or `taxes_fees < 0`. |
 | `FARE_OUT_OF_PLAUSIBLE_RANGE` | Outside ₹500 – ₹500,000. |
 | `QUOTE_DATE_AFTER_TRAVEL_DATE` | Negative lead time — a fare quoted after departure. |
-| `COMPONENTS_DO_NOT_RECONCILE` | Supplied total disagrees with the components by more than ₹1. |
+| `COMPONENTS_DO_NOT_RECONCILE` | Aggregate fees, granular components, or supplied total disagree by more than ₹2. |
 | `DUPLICATE_KEY` | The natural key appears twice in the same file. |
 | `DUPLICATE_OF_EXISTING_ROW` | The natural key is already in the database. |
 

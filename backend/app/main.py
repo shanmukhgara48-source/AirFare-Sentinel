@@ -68,7 +68,8 @@ app = FastAPI(
     ],
 )
 
-# TODO: add auth — production would sit behind MoSPI SSO. Open CORS is demo-only.
+# TODO: add auth — production would sit behind MoSPI SSO. Development CORS is
+# restricted to configured origins, but CORS is not an authorization boundary.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -328,6 +329,7 @@ def provider_status() -> dict:
     Amadeus provider is set up before attempting live data ingestion.
     """
     statuses = get_provider_statuses()
+    source_types = fetch_data_source_types()
     configured_provider = get_configured_live_provider()
     live_provider = get_live_provider()
     mode = _operating_mode()
@@ -336,7 +338,9 @@ def provider_status() -> dict:
         **mode,
         "live_provider_configured": configured_provider is not None,
         "live_fetch_enabled": live_provider is not None,
-        "live_data_available": live_provider is not None,
+        # Provider readiness and stored live data are deliberately separate.
+        # Credentials alone never justify a live-data claim.
+        "live_data_available": "live" in source_types,
         "active_live_provider": live_provider.name if live_provider else None,
         "configured_live_provider": configured_provider.name if configured_provider else None,
         "demo_fallback": True,  # always available
@@ -621,6 +625,7 @@ def competition() -> dict:
         return {
             "empty": True,
             "message": "No data loaded. Go to the Admin page and load the sample dataset.",
+            "data_source": "No observations loaded",
             "summary": {"healthy_count": 0, "watch_count": 0,
                         "high_risk_count": 0, "total_routes": 0},
             "routes": [],
@@ -633,7 +638,12 @@ def competition() -> dict:
         "high_risk_count": sum(1 for r in routes if r["status"] == "High Risk"),
         "total_routes": len(routes),
     }
-    return {"empty": False, "summary": summary, "routes": routes}
+    return {
+        "empty": False,
+        "data_source": _observation_source_label(observations),
+        "summary": summary,
+        "routes": routes,
+    }
 
 
 @app.get("/api/events", tags=["dashboard"])
@@ -880,10 +890,15 @@ def live_fetch(quick: bool = Query(False)) -> dict:
         "message": (
             f"Live fetch complete. {inserted_count} quotes accepted from "
             f"{fetch_result['fetch_count']} API calls."
+            if inserted_count > 0 else
+            "Live fetch completed, but no quote rows were stored. Review provider "
+            "coverage, route errors, and quarantined rows before making any live-data claim."
         ),
         "data_notice": (
-            "These are live fare quotes observed today for future travel dates. "
-            "They are NOT guaranteed prices or forecasts."
+            "Stored rows are live fare quote snapshots observed today for future travel dates; "
+            "they are not guaranteed prices or forecasts."
+            if inserted_count > 0 else
+            "No live quote rows were stored by this run. Existing dataset provenance is unchanged."
         ),
     }
     _last_live_fetch = result
@@ -895,7 +910,8 @@ def live_fetch_status() -> dict:
     """
     Return the result of the most recent live-fetch run (this server process only).
 
-    Returns 404 when no fetch has been run since the server started.
+    Returns a stable 200 response with ``has_result=false`` when no fetch has
+    been run since the server started.
     """
     configured_provider = get_configured_live_provider()
     provider = get_live_provider()
@@ -905,6 +921,9 @@ def live_fetch_status() -> dict:
             **_operating_mode(),
             "live_provider_configured": configured_provider is not None,
             "live_fetch_enabled": provider is not None,
+            "active_live_provider": provider.name if provider else None,
+            "configured_live_provider": configured_provider.name if configured_provider else None,
+            # Backward-compatible aliases for the original status contract.
             "active_provider": provider.name if provider else None,
             "configured_provider": configured_provider.name if configured_provider else None,
             "message": "No live fetch has been run in this server session.",
@@ -914,6 +933,9 @@ def live_fetch_status() -> dict:
         **_operating_mode(),
         "live_provider_configured": configured_provider is not None,
         "live_fetch_enabled": provider is not None,
+        "active_live_provider": provider.name if provider else None,
+        "configured_live_provider": configured_provider.name if configured_provider else None,
+        # Backward-compatible aliases for the original status contract.
         "active_provider": provider.name if provider else None,
         "configured_provider": configured_provider.name if configured_provider else None,
         **_last_live_fetch,

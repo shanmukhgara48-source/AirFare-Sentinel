@@ -10,21 +10,32 @@ import {
   YAxis,
 } from 'recharts'
 import { api, formatClass, formatINR, type CompareRow, type FilterOptions } from '../api'
-import { Card, Delta, EmptyState, ErrorNote, Field, Select, Spinner } from '../components/ui'
+import { Card, Delta, EmptyState, ErrorNote, Field, JudgePanel, Select, Spinner } from '../components/ui'
 import { axisProps, gridProps, tooltipProps } from '../components/chart'
+import { useJudgeMode } from '../context/judgeModeContext'
 
 export default function Compare() {
   const [options, setOptions] = useState<FilterOptions | null>(null)
-  const [rows, setRows] = useState<CompareRow[]>([])
+  const [result, setResult] = useState<{
+    key: string
+    rows: CompareRow[]
+    error: string
+  } | null>(null)
   const [dimension, setDimension] = useState<'route' | 'airline'>('route')
   const [fareClass, setFareClass] = useState('')
   const [leadBucket, setLeadBucket] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [optionsError, setOptionsError] = useState('')
+  const { judgeMode } = useJudgeMode()
 
   useEffect(() => {
-    api.filters().then(setOptions).catch((e) => setError(e.message))
+    let cancelled = false
+    api.filters()
+      .then((result) => { if (!cancelled) setOptions(result) })
+      .catch((e: Error) => { if (!cancelled) setOptionsError(e.message) })
+    return () => { cancelled = true }
   }, [])
+
+  const queryKey = [dimension, fareClass, leadBucket].join('|')
 
   useEffect(() => {
     let cancelled = false
@@ -34,15 +45,27 @@ export default function Compare() {
         fare_class: fareClass || undefined,
         lead_bucket: leadBucket || undefined,
       })
-      .then((r) => { if (!cancelled) setRows(r.rows ?? []) })
-      .catch((e) => { if (!cancelled) setError(e.message) })
-      .finally(() => { if (!cancelled) setLoading(false) })
+      .then((r) => {
+        if (!cancelled) setResult({ key: queryKey, rows: r.rows ?? [], error: '' })
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setResult({ key: queryKey, rows: [], error: e.message })
+      })
     return () => { cancelled = true }
-  }, [dimension, fareClass, leadBucket])
+  }, [queryKey, dimension, fareClass, leadBucket])
 
+  const activeResult = result?.key === queryKey ? result : null
+  const rows = activeResult?.rows ?? []
+  const loading = activeResult === null
+  const error = optionsError || activeResult?.error || ''
   if (error) return <ErrorNote message={error} />
 
   const label = dimension === 'route' ? 'Route' : 'Carrier'
+  const highestFare = rows[0]
+  const largestMove = rows.reduce<CompareRow | null>(
+    (best, row) => !best || Math.abs(row.delta ?? 0) > Math.abs(best.delta ?? 0) ? row : best,
+    null,
+  )
 
   return (
     <div className="space-y-6">
@@ -52,6 +75,31 @@ export default function Compare() {
           Rank routes or carriers by fare level and by how their own index has moved.
         </p>
       </header>
+
+      {judgeMode && (
+        <JudgePanel items={[
+          {
+            q: 'What does this view show?',
+            a: loading
+              ? `Loading the current ${label.toLowerCase()} comparison.`
+              : `${rows.length} ${label.toLowerCase()}${rows.length === 1 ? '' : 's'} match the current filters. ${highestFare ? `${highestFare.group} has the highest observed average fare at ${formatINR(highestFare.avg_fare)}.` : 'No comparable rows are available.'}`,
+          },
+          {
+            q: 'What moved most?',
+            a: largestMove && largestMove.delta != null
+              ? `${largestMove.group} has the largest absolute within-group index move (${largestMove.delta > 0 ? '+' : ''}${largestMove.delta.toFixed(2)} points). Each group is rebased to its own starting value of 100.`
+              : 'There is not enough time-series coverage to identify a largest move.',
+          },
+          {
+            q: 'How should this be read?',
+            a: 'Average fare levels compare the current observation mix; index changes compare like-for-like cells over time. A high average fare is not, by itself, evidence of an unusual increase.',
+          },
+          {
+            q: 'What should a judge verify?',
+            a: 'Change the fare class or booking lead-time filter and confirm that the ranking, chart, and observation counts update together without changing the underlying data.',
+          },
+        ]} />
+      )}
 
       <Card title="View">
         <div className="grid gap-4 sm:grid-cols-3">

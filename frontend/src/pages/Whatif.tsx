@@ -355,7 +355,7 @@ export default function Whatif() {
                     ? '1 (monopoly)'
                     : String(v)
                 }
-                note={`Baseline in demo dataset: ${BASELINE_CARRIERS} carriers. Fewer carriers → higher concentration → upward pressure.`}
+                note={`Model baseline: ${BASELINE_CARRIERS} carriers. Fewer carriers → higher concentration → upward pressure.`}
                 neutral={BASELINE_CARRIERS}
                 higherIsPressure={false}
               />

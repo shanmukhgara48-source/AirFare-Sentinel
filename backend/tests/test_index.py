@@ -202,6 +202,23 @@ class TestWeightedLaspeyres(unittest.TestCase):
         # Unweighted Jevons: √(1.10 × 0.90) = √0.99 = 99.50 → below 100.
         self.assertLess(series[1]["apix_unweighted"], 100.0)
 
+    def test_more_carriers_do_not_multiply_a_routes_published_weight(self):
+        """Carrier coverage must not silently change a route's basket weight."""
+        rows = [
+            obs(4000, DAY1, route=("DEL", "BOM"), airline="SA1"),
+            obs(4400, DAY2, route=("DEL", "BOM"), airline="SA1"),
+            obs(4200, DAY1, route=("DEL", "BOM"), airline="BW2"),
+            obs(4620, DAY2, route=("DEL", "BOM"), airline="BW2"),
+            obs(6000, DAY1, route=("DEL", "BLR"), airline="SA1"),
+            obs(5400, DAY2, route=("DEL", "BLR"), airline="SA1"),
+        ]
+        series = compute_index_timeseries(rows, weighted=True)
+        expected = 100 * (
+            (0.14 / (0.14 + 0.10)) * 1.10
+            + (0.10 / (0.14 + 0.10)) * 0.90
+        )
+        self.assertAlmostEqual(series[1]["apix_weighted"], expected, places=1)
+
 
 # ================================================================ §5 Quality flags
 
@@ -258,6 +275,20 @@ class TestMissingData(unittest.TestCase):
         self.assertEqual(report["complete_cells"], 1)
         self.assertEqual(len(report["sparse_cells"]), 1)
         self.assertEqual(report["sparse_cells"][0]["coverage_pct"], 50.0)
+
+    def test_weighted_coverage_averages_actual_period_availability(self):
+        rows = [
+            obs(4000, DAY1, route=("DEL", "BOM")),
+            obs(6000, DAY1, route=("DEL", "BLR")),
+            obs(4400, DAY2, route=("DEL", "BOM")),
+        ]
+        report = coverage_report(rows)
+        day_two_share = 100 * 0.14 / (0.14 + 0.10)
+        expected_mean = (100.0 + day_two_share) / 2
+        self.assertAlmostEqual(
+            report["mean_weight_coverage_pct"], expected_mean, places=1
+        )
+        self.assertEqual(report["quality_flag"], "RED")
 
     def test_empty_input_produces_no_series(self):
         self.assertEqual(compute_index_timeseries([]), [])

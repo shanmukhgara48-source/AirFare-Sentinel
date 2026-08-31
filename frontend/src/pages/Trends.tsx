@@ -18,12 +18,15 @@ import {
   EmptyState,
   ErrorNote,
   Field,
+  JudgePanel,
   Select,
   Spinner,
 } from '../components/ui'
 import { axisProps, gridProps, tooltipProps } from '../components/chart'
+import { useJudgeMode } from '../context/judgeModeContext'
 
 export default function Trends() {
+  const { judgeMode } = useJudgeMode()
   const [options, setOptions] = useState<FilterOptions | null>(null)
   const [result, setResult] = useState<{
     key: string
@@ -98,9 +101,36 @@ export default function Trends() {
       <header>
         <h1 className="font-serif text-[26px] leading-tight">Fare Trends</h1>
         <p className="mt-1 text-[13px] text-muted">
-          Slice the sample by route, carrier, booking lead time, travel date and fare class.
+          Slice the current dataset by route, carrier, booking lead time, travel date and fare class.
         </p>
       </header>
+
+      {judgeMode && (
+        <JudgePanel items={[
+          {
+            q: 'What is selected?',
+            a: loading
+              ? 'Loading the current filter selection.'
+              : data && !data.empty
+                ? `${data.observation_count.toLocaleString()} observations match the current filters, producing ${data.series.length} ${granularity === 'week' ? 'weekly' : 'daily'} index points.`
+                : 'No observations match the current filters.',
+          },
+          {
+            q: 'What does the line mean?',
+            a: 'The filtered index is recomputed from like-for-like route, carrier, fare-class, and lead-time cells. A value above 100 means those comparable fares are above their own starting level.',
+          },
+          {
+            q: 'How is missing data handled?',
+            a: data && !data.empty
+              ? `Missing cells are not imputed. Current panel quality is ${data.coverage.quality_flag}, with ${data.coverage.mean_coverage_pct}% mean cell coverage.`
+              : 'Missing cells are excluded rather than filled with invented fares; coverage is shown once data is available.',
+          },
+          {
+            q: 'What should an analyst do next?',
+            a: 'Use the booking curve and fare-class breakdown to distinguish a broad price move from a change concentrated in one booking window or product class.',
+          },
+        ]} />
+      )}
 
       <Card
         title="Filters"
@@ -188,7 +218,7 @@ export default function Trends() {
       ) : !data || data.empty ? (
         <EmptyState
           title="No observations match these filters"
-          body="This combination of route, carrier, class and lead time has no rows in the sample. Widen or reset the filters."
+          body="This combination of route, carrier, class and lead time has no rows in the current dataset. Widen or reset the filters."
           action={<Button onClick={reset}>Reset filters</Button>}
         />
       ) : (

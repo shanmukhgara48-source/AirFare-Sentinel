@@ -287,6 +287,14 @@ def detect_spikes(
                 severity=sev,
                 confidence=conf,
             )
+            source_type = row.get("source_type", "imported")
+            provider = row.get("provider")
+            if source_type == "demo":
+                source_label = "Demo dataset (synthetic)"
+            elif source_type == "live":
+                source_label = f"Live quote snapshot ({provider or 'provider'})"
+            else:
+                source_label = "Imported dataset"
             entry = {
                 "observation_id": row.get("id"),
                 "route": f"{row['origin']}-{row['destination']}",
@@ -306,6 +314,9 @@ def detect_spikes(
                 "severity": sev,
                 "confidence": conf,
                 "impact_score": impact,
+                "source_type": source_type,
+                "provider": provider,
+                "source_label": source_label,
                 "reason_code": "",   # assigned in second pass
                 "explanation": "",   # assigned after reason_code
                 "recommended_action": recommend_action(sev, direction),

@@ -11,7 +11,7 @@ source .venv/bin/activate
 python -m pytest tests -q
 ```
 
-- [ ] `447 passed, 25 subtests passed`
+- [ ] `463 passed, 33 subtests passed`
 - [ ] No warnings or failures
 - [ ] The test run does not change `backend/apix.db` (tests use a temporary DB)
 
@@ -28,7 +28,7 @@ npm run build
 
 ```bash
 # backend/
-uvicorn app.main:app --port 8000
+python -m uvicorn app.main:app --port 8000
 
 # frontend/
 npm run dev
@@ -37,10 +37,15 @@ npm run dev
 - [ ] `GET /api/health` returns `{"status":"ok"}`
 - [ ] `GET /api/version` reports `operating_mode: demo`
 - [ ] `GET /api/provider/status` reports `live_fetch_enabled: false`
+- [ ] `live_data_available` remains false until live-provenance rows are stored
 - [ ] Header shows **Demo mode**
 - [ ] Admin provider card is disabled and explains the future switch
 - [ ] Load sample data reports 23,558 accepted and 0 quarantined
 - [ ] Header/Overview show **Demo dataset (synthetic)** provenance
+
+With both servers running, execute `npm run smoke` from `frontend/`; it must
+visit all 10 routes in Judge Mode without console warnings, page exceptions, or
+failed API responses.
 
 ## Five-Minute Path
 
@@ -51,7 +56,7 @@ npm run dev
 - [ ] Vulnerability: all five lead buckets render and filters recalculate
 - [ ] Fairness Lens: categories render; Tier-2 limitation and Unclassified policy are visible
 - [ ] What-If: current headline baseline loads; sliders update backend-derived output
-- [ ] Judge Mode: toggle remains consistent while navigating between core pages
+- [ ] Judge Mode: toggle remains consistent and a panel renders on all 10 routes
 - [ ] Admin: provider status, ingestion history, observations, and pagination render
 
 ## Runtime And Responsive Checks

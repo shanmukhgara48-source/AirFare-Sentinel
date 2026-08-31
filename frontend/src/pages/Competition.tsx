@@ -36,18 +36,25 @@ function HhiBar({ hhi }: { hhi: number }) {
 
 function RouteDrawer({
   route,
+  dataSource,
   onClose,
 }: {
   route: RouteCompetition
+  dataSource: string
   onClose: () => void
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[8vh]">
-      <div className="w-full max-w-[620px] rounded-lg border border-line bg-white shadow-xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="competition-route-title"
+        className="w-full max-w-[620px] rounded-lg border border-line bg-white shadow-xl"
+      >
         <header className="flex items-start justify-between border-b border-line px-6 py-4">
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="font-serif text-[20px] font-semibold tracking-tight font-mono">
+              <h2 id="competition-route-title" className="font-serif text-[20px] font-semibold tracking-tight font-mono">
                 {route.route}
               </h2>
               <Pill tone={statusTone(route.status)}>{route.status}</Pill>
@@ -149,14 +156,14 @@ function RouteDrawer({
           <div className="rounded-md border border-[#f0dcbb] bg-[#fdf4e7] px-4 py-3">
             <p className="text-[11.5px] leading-relaxed text-warn/90">
               <strong>Monitoring signal only.</strong> HHI is computed on observation counts
-              in this synthetic dataset, not on actual market share or revenue.
+              in the current dataset, not on actual market share or revenue.
               This is a concentration-risk proxy — not a legal or regulatory finding.
             </p>
           </div>
         </div>
 
         <footer className="border-t border-line px-6 py-3 text-[11px] text-muted">
-          APIx Competition Monitor · {route.observation_count.toLocaleString()} observations · Synthetic sample data
+          FarePulse Competition Monitor · {route.observation_count.toLocaleString()} observations · {dataSource}
         </footer>
       </div>
     </div>
@@ -173,11 +180,13 @@ export default function Competition() {
   const [filterStatus, setFilterStatus] = useState<string>('all')
 
   useEffect(() => {
+    let cancelled = false
     api
       .competition()
-      .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .then((result) => { if (!cancelled) setData(result) })
+      .catch((e: Error) => { if (!cancelled) setError(e.message) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
@@ -226,7 +235,7 @@ export default function Competition() {
           },
           {
             q: 'How confident are we?',
-            a: 'The Herfindahl-Hirschman Index (HHI) is computed from fare observation counts in this synthetic dataset — not from actual revenue, capacity, or passenger shares, which are unavailable. Treat concentration signals as directional proxies. A route with 2 carriers and low fares (Watch status, Low pressure) may not require action; a route with 1 carrier and High fare pressure warrants closer scrutiny.',
+            a: `The Herfindahl-Hirschman Index (HHI) is computed from fare observation counts in the current dataset (${data?.data_source ?? 'source unavailable'}) — not from actual revenue, capacity, or passenger shares, which are unavailable. Treat concentration signals as directional proxies. A route with 2 carriers and low fares (Watch status, Low pressure) may not require action; a route with 1 carrier and High fare pressure warrants closer scrutiny.`,
           },
           {
             q: 'What should an analyst do next?',
@@ -418,7 +427,11 @@ export default function Competition() {
       )}
 
       {selected && (
-        <RouteDrawer route={selected} onClose={() => setSelected(null)} />
+        <RouteDrawer
+          route={selected}
+          dataSource={data?.data_source ?? 'Dataset source unavailable'}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   )

@@ -72,7 +72,8 @@ class _Settings:
 
         return {
             "amadeus_client_id": mask(self.amadeus_client_id),
-            "amadeus_client_secret": mask(self.amadeus_client_secret),
+            # Never reveal even a prefix of a secret in logs or diagnostics.
+            "amadeus_client_secret": "(set)" if self.amadeus_client_secret else "(not set)",
             "demo_mode": self.demo_mode,
             "cors_origins": self.cors_origins,
             "upload_max_bytes": self.upload_max_bytes,

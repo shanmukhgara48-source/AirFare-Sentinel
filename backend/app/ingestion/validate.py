@@ -9,6 +9,7 @@ Aligned with monograph §8.1 (validation sequence) and Appendix G (reason codes)
 """
 import csv
 import io
+import math
 
 from app.model import (
     FARE_CLASSES,
@@ -17,6 +18,7 @@ from app.model import (
     RECONCILIATION_TOLERANCE,
     compute_lead_days,
     normalize_code,
+    normalize_fare,
     normalize_fare_simple,
     normalize_observation,
     parse_iso_date,
@@ -32,6 +34,10 @@ REQUIRED_COLUMNS = [
 OPTIONAL_COLUMNS = ["total_fare", "airline_surcharge", "statutory_taxes", "airport_charges"]
 
 VALID_FARE_CLASSES = set(FARE_CLASSES)
+
+
+def _all_finite(*values: float) -> bool:
+    return all(math.isfinite(value) for value in values)
 
 
 def validate_rows(csv_text: str) -> tuple[list[dict], list[dict]]:
@@ -55,7 +61,9 @@ def validate_rows(csv_text: str) -> tuple[list[dict], list[dict]]:
                        ["airline_surcharge", "statutory_taxes", "airport_charges"])
 
     for row in reader:
-        raw = ",".join(str(row.get(c, "")) for c in REQUIRED_COLUMNS)
+        raw_buffer = io.StringIO()
+        csv.writer(raw_buffer).writerow(row.get(column, "") for column in reader.fieldnames)
+        raw = raw_buffer.getvalue().rstrip("\r\n")
 
         def reject(reason: str) -> None:
             quarantined.append({"raw_row": raw, "reject_reason": reason})
@@ -84,7 +92,15 @@ def validate_rows(csv_text: str) -> tuple[list[dict], list[dict]]:
                 statutory_taxes = float(row.get("statutory_taxes", 0) or 0)
                 airport_charges = float(row.get("airport_charges", 0) or 0)
             except (ValueError, TypeError):
-                pass  # Fall back to 2-component mode
+                reject("SCHEMA_ERROR: optional fare components must be numeric")
+                continue
+
+        numeric_values = [base_fare, taxes_fees]
+        if has_granular:
+            numeric_values.extend([airline_surcharge, statutory_taxes, airport_charges])
+        if not _all_finite(*numeric_values):
+            reject("SCHEMA_ERROR: fare components must be finite numbers")
+            continue
 
         # 2. Controlled vocabularies
         if len(origin) != 3 or not origin.isalpha() or len(destination) != 3 or not destination.isalpha():
@@ -95,16 +111,35 @@ def validate_rows(csv_text: str) -> tuple[list[dict], list[dict]]:
             reject("ORIGIN_EQUALS_DESTINATION")
             continue
 
+        if not (2 <= len(airline) <= 3) or not airline.isalnum():
+            reject("INVALID_AIRLINE_CODE")
+            continue
+
         if fare_class not in VALID_FARE_CLASSES:
             reject(f"INVALID_FARE_CLASS: {fare_class}")
             continue
 
         # 3. Fare sanity
-        if base_fare <= 0 or taxes_fees < 0:
+        if base_fare <= 0 or taxes_fees < 0 or (
+            has_granular
+            and any(value < 0 for value in (airline_surcharge, statutory_taxes, airport_charges))
+        ):
             reject("NON_POSITIVE_FARE")
             continue
 
-        total_fare = normalize_fare_simple(base_fare, taxes_fees)
+        if has_granular:
+            granular_fees = round(airline_surcharge + statutory_taxes + airport_charges, 2)
+            if abs(granular_fees - taxes_fees) > RECONCILIATION_TOLERANCE:
+                reject(
+                    "COMPONENTS_DO_NOT_RECONCILE: taxes_fees does not match "
+                    "airline_surcharge + statutory_taxes + airport_charges"
+                )
+                continue
+            total_fare = normalize_fare(
+                base_fare, airline_surcharge, statutory_taxes, airport_charges
+            )
+        else:
+            total_fare = normalize_fare_simple(base_fare, taxes_fees)
         if not MIN_PLAUSIBLE_FARE <= total_fare <= MAX_PLAUSIBLE_FARE:
             reject(
                 f"FARE_OUT_OF_PLAUSIBLE_RANGE: {total_fare} outside "
@@ -121,14 +156,18 @@ def validate_rows(csv_text: str) -> tuple[list[dict], list[dict]]:
         supplied_total = (row.get("total_fare") or "").strip()
         if supplied_total:
             try:
-                if abs(float(supplied_total) - total_fare) > RECONCILIATION_TOLERANCE:
+                supplied_total_value = float(supplied_total)
+                if not math.isfinite(supplied_total_value):
+                    raise ValueError("total_fare must be finite")
+                if abs(supplied_total_value - total_fare) > RECONCILIATION_TOLERANCE:
                     reject(
                         f"COMPONENTS_DO_NOT_RECONCILE: {supplied_total} != "
-                        f"{base_fare} + {taxes_fees}"
+                        f"computed total {total_fare}"
                     )
                     continue
-            except ValueError:
-                pass
+            except ValueError as exc:
+                reject(f"SCHEMA_ERROR: invalid total_fare ({exc})")
+                continue
 
         # 6. Duplicates
         key = (origin, destination, airline, fare_class,
@@ -190,6 +229,29 @@ def validate_live_quotes(quotes: list[dict]) -> tuple[list[dict], list[dict]]:
             _reject(f"SCHEMA_ERROR: {exc}")
             continue
 
+        has_granular = all(
+            q.get(name) is not None
+            for name in ("airline_surcharge", "statutory_taxes", "airport_charges")
+        )
+        airline_surcharge = 0.0
+        statutory_taxes = None
+        airport_charges = None
+        if has_granular:
+            try:
+                airline_surcharge = float(q["airline_surcharge"])
+                statutory_taxes = float(q["statutory_taxes"])
+                airport_charges = float(q["airport_charges"])
+            except (ValueError, TypeError) as exc:
+                _reject(f"SCHEMA_ERROR: invalid fare component ({exc})")
+                continue
+
+        numeric_values = [base_fare, taxes_fees]
+        if has_granular:
+            numeric_values.extend([airline_surcharge, statutory_taxes, airport_charges])
+        if not _all_finite(*numeric_values):
+            _reject("SCHEMA_ERROR: fare components must be finite numbers")
+            continue
+
         # 2. Controlled vocabularies
         if (len(origin) != 3 or not origin.isalpha()
                 or len(destination) != 3 or not destination.isalpha()):
@@ -200,16 +262,45 @@ def validate_live_quotes(quotes: list[dict]) -> tuple[list[dict], list[dict]]:
             _reject("ORIGIN_EQUALS_DESTINATION")
             continue
 
+        if not (2 <= len(airline) <= 3) or not airline.isalnum():
+            _reject("INVALID_AIRLINE_CODE")
+            continue
+
         if fare_class not in VALID_FARE_CLASSES:
             _reject(f"INVALID_FARE_CLASS: {fare_class}")
             continue
 
         # 3. Fare sanity
-        if base_fare <= 0 or taxes_fees < 0:
+        if base_fare <= 0 or taxes_fees < 0 or (
+            has_granular
+            and any(value < 0 for value in (airline_surcharge, statutory_taxes, airport_charges))
+        ):
             _reject("NON_POSITIVE_FARE")
             continue
 
-        total_fare = normalize_fare_simple(base_fare, taxes_fees)
+        if has_granular:
+            granular_fees = round(airline_surcharge + statutory_taxes + airport_charges, 2)
+            if abs(granular_fees - taxes_fees) > RECONCILIATION_TOLERANCE:
+                _reject("COMPONENTS_DO_NOT_RECONCILE: live fare components")
+                continue
+            total_fare = normalize_fare(
+                base_fare, airline_surcharge, statutory_taxes, airport_charges
+            )
+        else:
+            total_fare = normalize_fare_simple(base_fare, taxes_fees)
+
+        supplied_total = q.get("total_fare")
+        if supplied_total is not None:
+            try:
+                supplied_total_value = float(supplied_total)
+                if not math.isfinite(supplied_total_value):
+                    raise ValueError("total_fare must be finite")
+            except (ValueError, TypeError) as exc:
+                _reject(f"SCHEMA_ERROR: invalid total_fare ({exc})")
+                continue
+            if abs(supplied_total_value - total_fare) > RECONCILIATION_TOLERANCE:
+                _reject("COMPONENTS_DO_NOT_RECONCILE: live total fare")
+                continue
         if not MIN_PLAUSIBLE_FARE <= total_fare <= MAX_PLAUSIBLE_FARE:
             _reject(
                 f"FARE_OUT_OF_PLAUSIBLE_RANGE: {total_fare} outside "
@@ -239,9 +330,12 @@ def validate_live_quotes(quotes: list[dict]) -> tuple[list[dict], list[dict]]:
             quote_date=quote_date,
             base_fare=base_fare,
             taxes_fees=taxes_fees,
+            airline_surcharge=airline_surcharge,
+            statutory_taxes=statutory_taxes,
+            airport_charges=airport_charges,
         )
         # Preserve extended provider-sourced fields
-        obs["source_type"] = q.get("source_type", "live")
+        obs["source_type"] = "live"
         obs["provider"] = q.get("provider")
         obs["flight_number"] = q.get("flight_number")
         obs["offer_id"] = q.get("offer_id")

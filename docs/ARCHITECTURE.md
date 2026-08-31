@@ -26,7 +26,7 @@
 │     ├── engine/anomaly.py ─── robust z-score spike detection        │
 │     ├── engine/{competition,vulnerability,fairness,whatif}.py      │
 │     ├── providers/ ─── demo + credential-gated Amadeus adapters    │
-│     ├── ingestion/validate.py ─── 12-rule row validator            │
+│     ├── ingestion/validate.py ─── named-rule row validator          │
 │     ├── model.py ─── vocabularies, weights, normalisation          │
 │     └── db/database.py ─── SQLite connection manager               │
 │                                                                     │
@@ -129,6 +129,8 @@ Single source of truth for all vocabularies, weights, and normalisation logic:
 - Fare classes: `ECONOMY_SAVER`, `ECONOMY_FLEX`, `PREMIUM_ECONOMY`, `BUSINESS`
 - Lead-time buckets: `D00_03`, `D04_07`, `D08_14`, `D15_30`, `D31_PLUS`
 - 14-route basket with illustrative traffic-proportional prototype weights
+- Equal carrier allocation within each route prevents observed carrier count
+  from changing that route's published weight
 - 4-component price anatomy: `base_fare + airline_surcharge + statutory_taxes + airport_charges`
 - Quality flags: GREEN (≥90%), AMBER (80–90%), RED (<80%)
 - Comparability cell definition: `(origin, destination, airline, fare_class, lead_bucket)`
@@ -144,11 +146,12 @@ quarantined with a named reason:
 | `SCHEMA_ERROR` | Type and ISO-date parsing |
 | `INVALID_AIRPORT_CODE` | 3-letter IATA format |
 | `ORIGIN_EQUALS_DESTINATION` | Origin differs from destination |
+| `INVALID_AIRLINE_CODE` | 2–3 character alphanumeric carrier code |
 | `INVALID_FARE_CLASS` | Must be one of the 4 classes |
 | `NON_POSITIVE_FARE` | Base fare positive and taxes non-negative |
 | `FARE_OUT_OF_PLAUSIBLE_RANGE` | Total between ₹500 and ₹5,00,000 |
 | `QUOTE_DATE_AFTER_TRAVEL_DATE` | Non-negative booking lead time |
-| `COMPONENTS_DO_NOT_RECONCILE` | Supplied total matches base + taxes (±₹2) |
+| `COMPONENTS_DO_NOT_RECONCILE` | Aggregate fees, granular components, and supplied total agree (±₹2) |
 | `DUPLICATE_KEY` / `DUPLICATE_OF_EXISTING_ROW` | Batch and database duplicate checks |
 
 **Audit guarantee:** `accepted + quarantined = submitted`. Nothing is silently dropped.
@@ -173,7 +176,7 @@ CSV file, sample data, or provider quote snapshot
     │
     ▼
 ┌─────────────────────┐
-│  validate_rows()    │ ← 12 rejection rules
+│  validate_rows()    │ ← named validation and reconciliation rules
 │  accepted[]         │
 │  quarantined[]      │
 └────────┬────────────┘
@@ -211,7 +214,7 @@ CSV file, sample data, or provider quote snapshot
 For a demo/prototype with 23,558 rows, SQLite is:
 - Zero configuration — no server process to manage
 - Portable — the entire database is one file (`apix.db`)
-- Fast enough — all queries return in <50ms
+- Fast enough for the bundled dataset; latency is verified during the pre-demo smoke check
 
 Production would move to PostgreSQL with TimescaleDB for time-series compression and concurrent access.
 
@@ -231,7 +234,7 @@ add Redis, materialized views, or scheduled pre-computation after benchmarking.
 ### Why pure functions in the engine?
 
 `engine/index.py` and `engine/anomaly.py` take lists of dicts and return lists of dicts. No database dependency. This means:
-- 447 tests run against an isolated temporary SQLite database
+- 463 tests plus 33 subtests run against an isolated temporary SQLite database
 - The same functions work on CSV data (integration tests) and DB data (API)
 - Easy to swap the storage layer without touching computation logic
 

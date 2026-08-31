@@ -78,16 +78,30 @@ def _bucket_key(date_str: str, granularity: str) -> str:
     return date_str
 
 
-def _cell_weight(key: tuple) -> float:
+def _fixed_cell_weights(keys) -> dict[tuple, float]:
+    """Return fixed weights for a reference-cell universe.
+
+    Route weights are allocated equally across the carriers observed on that
+    route, then across lead-time buckets and fare classes.  Without the carrier
+    allocation, a route with four observed carriers would receive four times
+    the influence of an otherwise identical one-carrier route even though the
+    published prototype weight is a *route* weight.
     """
-    Compute a cell's fixed weight from the route basket, lead-bucket and
-    fare-class weight tables. Monograph §9.1: W[c] are fixed and sum to 1.
-    """
-    origin, destination, _airline, fare_class, lead_bucket = key
-    rw = ROUTE_BASKET.get((origin, destination), (None, 0.0))[1]
-    lw = LEAD_BUCKET_WEIGHTS.get(lead_bucket, 0.0)
-    fw = FARE_CLASS_WEIGHTS.get(fare_class, 0.0)
-    return rw * lw * fw
+    key_list = list(keys)
+    carriers_by_route: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for origin, destination, airline, _fare_class, _lead_bucket in key_list:
+        carriers_by_route[(origin, destination)].add(airline)
+
+    weights: dict[tuple, float] = {}
+    for key in key_list:
+        origin, destination, _airline, fare_class, lead_bucket = key
+        route = (origin, destination)
+        carrier_count = len(carriers_by_route[route])
+        rw = ROUTE_BASKET.get(route, (None, 0.0))[1]
+        lw = LEAD_BUCKET_WEIGHTS.get(lead_bucket, 0.0)
+        fw = FARE_CLASS_WEIGHTS.get(fare_class, 0.0)
+        weights[key] = rw * lw * fw / carrier_count if carrier_count else 0.0
+    return weights
 
 
 def compute_index_timeseries(
@@ -115,7 +129,7 @@ def compute_index_timeseries(
     total_cells = len(reference)
 
     # Pre-compute cell weights.
-    weights = {key: _cell_weight(key) for key in reference}
+    weights = _fixed_cell_weights(reference)
     total_basket_weight = sum(weights.values())
 
     periods: dict[str, dict[tuple, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -198,7 +212,7 @@ def compute_contributions(
         return []
 
     reference = compute_reference_prices(observations)
-    weights = {key: _cell_weight(key) for key in reference}
+    weights = _fixed_cell_weights(reference)
     total_basket_weight = sum(weights.values())
 
     periods: dict[str, dict[tuple, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -330,32 +344,37 @@ def coverage_report(observations: list[Observation]) -> dict:
 
     mean_coverage = sum(len(d) for d in seen.values()) / (len(seen) * total_periods) * 100
 
-    # Weight-based coverage: what share of the basket is observed?
-    weights = {key: _cell_weight(key) for key in seen}
-    total_basket = sum(weights.values())
-    all_possible_weight = sum(
-        _cell_weight(key) for key in _all_possible_cells(observations)
-    ) if observations else 0.0
-    weight_cov = 100.0 * total_basket / all_possible_weight if all_possible_weight > 0 else 0.0
+    # Weight-based coverage is averaged across periods.  Comparing the set of
+    # ever-observed cells with itself would always report 100%, hiding sparse
+    # periods.  The denominator is the fixed reference-cell universe; each
+    # period contributes the share of that weight actually observed.
+    weights = _fixed_cell_weights(seen)
+    total_basket_weight = sum(weights.values())
+    period_weight_coverage = []
+    if total_basket_weight > 0:
+        for period in periods:
+            active_weight = sum(
+                weights[key] for key, days in seen.items() if period in days
+            )
+            period_weight_coverage.append(100.0 * active_weight / total_basket_weight)
+    mean_weight_coverage = (
+        sum(period_weight_coverage) / len(period_weight_coverage)
+        if period_weight_coverage else 0.0
+    )
 
-    qf = quality_flag(weight_cov if weight_cov > 0 else mean_coverage)
+    qf = quality_flag(
+        mean_weight_coverage if total_basket_weight > 0 else mean_coverage
+    )
 
     return {
         "total_cells": len(seen),
         "total_periods": total_periods,
         "mean_coverage_pct": round(mean_coverage, 1),
-        "mean_weight_coverage_pct": round(weight_cov, 1),
+        "mean_weight_coverage_pct": round(mean_weight_coverage, 1),
         "complete_cells": complete,
         "sparse_cells": sparse[:20],
         "quality_flag": qf.value,
     }
-
-
-def _all_possible_cells(observations: list[Observation]) -> set[tuple]:
-    """The universe of cells ever observed."""
-    return {cell_key(obs) for obs in observations}
-
-
 # ================================================================ head-to-head
 
 def compute_head_to_head(

@@ -66,7 +66,12 @@ function CategoryDrawer({
   const color = CAT_COLOR[row.category] ?? '#666'
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[8vh]">
-      <div className="w-full max-w-[640px] rounded-lg border border-line bg-white shadow-xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="fairness-category-title"
+        className="w-full max-w-[640px] rounded-lg border border-line bg-white shadow-xl"
+      >
         <header className="flex items-start justify-between border-b border-line px-6 py-4">
           <div>
             <div className="flex items-center gap-2.5">
@@ -74,7 +79,7 @@ function CategoryDrawer({
                 className="inline-block h-2.5 w-2.5 rounded-full"
                 style={{ background: color }}
               />
-              <h2 className="font-serif text-[20px] font-semibold tracking-tight">
+              <h2 id="fairness-category-title" className="font-serif text-[20px] font-semibold tracking-tight">
                 {row.category}
               </h2>
               {row.fare_pressure && (
@@ -197,8 +202,21 @@ export default function Fairness() {
   )
 
   useEffect(() => {
-    api.fairness().then(setData).catch((e) => setError(e.message))
+    let cancelled = false
+    api.fairness()
+      .then((result) => { if (!cancelled) setData(result) })
+      .catch((e: Error) => { if (!cancelled) setError(e.message) })
+    return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (!selected) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelected(null)
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [selected])
 
   if (error) return <ErrorNote message={error} />
   if (!data) return <Spinner label="Loading fairness data" />

@@ -21,7 +21,7 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ```bash
@@ -72,7 +72,9 @@ curl http://localhost:8000/api/provider/status
 curl http://localhost:8000/api/version
 ```
 
-Only proceed when `live_fetch_enabled` is `true`. The Amadeus test environment
+Only proceed when `live_fetch_enabled` is `true`. Provider readiness is not a
+live-data claim: `live_data_available` becomes `true` only after stored rows
+carry live provenance. The Amadeus test environment
 has limited Indian domestic coverage; live results are quote snapshots, not
 transaction prices or forecasts. Demo data remains available as fallback.
 
@@ -93,8 +95,8 @@ The React application contains 10 routes:
 | Methodology | Formula, assumptions, quality gates, and limitations |
 | Admin | Demo load, CSV import, provider status, history, and observations |
 
-Judge Mode adds plain-English summaries using the current values on each core
-analysis screen. It does not change calculations.
+Judge Mode adds a consistent plain-English summary on all 10 routes. It uses
+the current screen values where applicable and never changes calculations.
 
 ## API Surface
 
@@ -116,6 +118,8 @@ Interactive OpenAPI documentation is available at `http://localhost:8000/docs`.
 - A cell is `route × carrier × fare class × lead-time bucket`.
 - Prototype route weights are illustrative traffic proportions, not current
   official DGCA weights. Production publication requires current calibration.
+- Each route weight is divided equally across its observed carriers so carrier
+  coverage cannot silently multiply a route's headline influence.
 - Missing cells are not imputed; coverage and quality flags remain visible.
 - Alerts require both a robust z-score threshold and a 25% material deviation.
 - Competition, passenger impact, vulnerability, fairness, and what-if outputs
@@ -139,7 +143,7 @@ npm run lint
 npm run build
 ```
 
-Current verified baseline: **447 tests and 25 subtests pass**, frontend lint is
+Current verified baseline: **463 tests and 33 subtests pass**, frontend lint is
 warning-free, and the production build completes without chunk-size warnings.
 Tests use an isolated temporary SQLite database and do not overwrite the demo
 database.

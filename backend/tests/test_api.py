@@ -17,6 +17,7 @@ Covered contracts:
 """
 import io
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -88,6 +89,16 @@ class TestProviderStatus(unittest.TestCase):
         body = client.get("/api/provider/status").json()
         self.assertIn("live_data_available", body)
         self.assertIsInstance(body["live_data_available"], bool)
+
+    def test_provider_readiness_does_not_claim_stored_live_data(self):
+        with patch("app.main.fetch_data_source_types", return_value=[]):
+            body = client.get("/api/provider/status").json()
+        self.assertFalse(body["live_data_available"])
+
+    def test_stored_live_provenance_sets_live_data_available(self):
+        with patch("app.main.fetch_data_source_types", return_value=["demo", "live"]):
+            body = client.get("/api/provider/status").json()
+        self.assertTrue(body["live_data_available"])
 
     def test_has_demo_fallback_flag(self):
         body = client.get("/api/provider/status").json()
@@ -342,6 +353,46 @@ class TestExport(unittest.TestCase):
         self.assertIn("Demo dataset (synthetic)", r.text)
         self.assertIn("not transaction prices", r.text)
         self.assertIn("official statistical release", r.text)
+
+
+class TestJudgeDemoPath(unittest.TestCase):
+    """One contract test covers the exact five-minute navigation sequence."""
+
+    def test_demo_path_is_populated_truthful_and_provider_safe(self):
+        loaded = client.post("/api/admin/load-sample")
+        self.assertEqual(loaded.status_code, 200)
+        self.assertEqual(loaded.json()["accepted_count"], 23558)
+        self.assertEqual(loaded.json()["quarantined_count"], 0)
+
+        for path in (
+            "/api/overview",
+            "/api/spikes",
+            "/api/competition",
+            "/api/vulnerability",
+            "/api/fairness",
+            "/api/whatif",
+            "/api/admin/batches",
+            "/api/admin/observations?limit=1",
+        ):
+            with self.subTest(path=path):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(response.json().get("empty", False))
+
+        version = client.get("/api/version").json()
+        self.assertEqual(version["operating_mode"], "demo")
+        self.assertEqual(version["dataset_mode"], "demo")
+
+        provider = client.get("/api/provider/status").json()
+        self.assertFalse(provider["live_fetch_enabled"])
+        self.assertFalse(provider["live_data_available"])
+
+        alert = client.get("/api/spikes").json()["flagged"][0]
+        self.assertEqual(alert["source_type"], "demo")
+        self.assertIn("synthetic", alert["source_label"].lower())
+
+        blocked_fetch = client.post("/api/admin/live-fetch?quick=true")
+        self.assertEqual(blocked_fetch.status_code, 409)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
-import { Card, Pill } from '../components/ui'
+import { Card, JudgePanel, Pill } from '../components/ui'
+import { useJudgeMode } from '../context/judgeModeContext'
 
 export default function Methodology() {
+  const { judgeMode } = useJudgeMode()
   return (
     <div className="space-y-6">
       <header>
@@ -9,6 +11,27 @@ export default function Methodology() {
           How the index is built, what it can support, and what it deliberately does not claim.
         </p>
       </header>
+
+      {judgeMode && (
+        <JudgePanel items={[
+          {
+            q: 'What is the core method?',
+            a: 'Fares are compared within like-for-like cells, combined geometrically within each cell, then aggregated with fixed illustrative route weights. The headline is a Laspeyres-type index and the unweighted Jevons series is a sensitivity check.',
+          },
+          {
+            q: 'Why is it explainable?',
+            a: 'Every formula, threshold, vocabulary, route weight, and quality gate is explicit in source and documented here. No model training or opaque score is required to reproduce an output.',
+          },
+          {
+            q: 'What is still provisional?',
+            a: 'The bundled observations are synthetic, route weights are prototype assumptions pending current DGCA calibration, event uplift estimates are illustrative, and offered fares are not transaction prices.',
+          },
+          {
+            q: 'What changes in live mode?',
+            a: 'Only ingestion provenance changes. With credentials and Demo Mode disabled, provider quote snapshots pass through the same validation and calculations; the formulas do not change.',
+          },
+        ]} />
+      )}
 
       <Card title="The comparability cell" subtitle="What we consider like-for-like">
         <p className="text-[13px] leading-relaxed text-muted">
@@ -105,7 +128,8 @@ export default function Methodology() {
             Weights are <strong className="font-medium text-ink">fixed</strong> for the
             index window — they do not change as prices change. This is the Laspeyres
             property: the index measures pure price change, not a mixture of price change and
-            traffic change.
+            traffic change. Each route's weight is allocated equally across its observed
+            carriers so routes with more carrier coverage do not gain extra headline influence.
           </p>
         </div>
       </Card>
@@ -312,7 +336,7 @@ export default function Methodology() {
       <Card title="What this MVP does not claim" subtitle="Stated plainly, because it matters">
         <ul className="space-y-2.5 text-[13px] leading-relaxed text-muted">
           {[
-            ['Synthetic data.', 'Every fare in the bundled dataset is generated. Carriers are fictional so no invented price is ever attached to a real airline. Nothing here is real market data.'],
+            ['Demo data.', 'Every fare in the bundled dataset is generated. Carriers are fictional so no invented price is attached to a real airline. Provider quote snapshots are labelled live only after a credentialed fetch succeeds.'],
             ['Offered, not transacted.', 'The data model represents advertised or offered fares. An index of offered prices is not an index of what passengers actually paid.'],
             ['Prototype route basket.', 'Route weights are illustrative traffic proportions across 7 city pairs (14 directional routes), not current official DGCA weights. Production would calibrate them against the full current DGCA route report.'],
             ['Per-cell reference base.', 'Each cell is based against its own first day in the data rather than one fixed national reference period — a simplification that keeps the index computable when cells enter and leave the panel at different times.'],

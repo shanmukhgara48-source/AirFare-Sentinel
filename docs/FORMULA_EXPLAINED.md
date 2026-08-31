@@ -71,6 +71,10 @@ The prototype uses **illustrative traffic-proportional route weights**. The
 Delhi-Mumbai corridor carries 14% of the prototype basket in each direction so
 the method demonstrates traffic-weighted aggregation. These are not current
 official DGCA route shares; production publication requires current calibration.
+Within a route, its fixed weight is divided equally across the carriers observed
+in the reference-cell universe, then across the five lead-time buckets and four
+fare classes. A route therefore keeps the same headline influence whether one
+or several carriers are observed.
 
 This means a 10% rise on Delhi-Mumbai moves the headline index more than a 10%
 rise on Bangalore-Hyderabad — which is correct, because it affects more passengers.

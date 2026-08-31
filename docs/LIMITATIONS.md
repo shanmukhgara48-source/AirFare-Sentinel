@@ -52,15 +52,22 @@ upward substitution bias — passengers shift to cheaper options, but the index
 still weights the original basket. Production would implement annual chain
 linking per CPI best practice.
 
-### 5. Equal lead-bucket and fare-class weights
+### 5. Equal carrier, lead-bucket, and fare-class allocation
 
-Within a route, all 5 lead-time buckets and all 4 fare classes receive equal
-weight. In reality, most passengers book 15–30 days ahead and fly economy
-saver.
+Within a route, the route weight is divided equally across observed carriers,
+all 5 lead-time buckets, and all 4 fare classes. In reality, carrier passenger
+shares differ, and most passengers book 15–30 days ahead and fly economy saver.
 
 **Impact:** The headline index may overweight business class and last-minute
 bookings relative to actual passenger behaviour. Production would derive
 sub-route weights from booking data.
+
+Routes outside the 14-route prototype basket have no fixed headline weight.
+If a selection contains only such routes, the engine falls back to the
+unweighted Jevons aggregate; in a mixed selection they remain visible in route,
+alert, and fairness outputs but contribute zero to the weighted headline and
+Passenger Impact Score. Production must assign reviewed route weights before
+publishing those routes in a national index.
 
 ### 6. No seasonal adjustment
 
@@ -142,7 +149,7 @@ job status in the database or a queue-backed job table.
 
 - A **methodology demonstration** — showing that the Laspeyres/Jevons approach
   works for airfares
-- A **working software system** — 24 API endpoints, 10 frontend routes, 447 tests
+- A **working software system** — 24 API endpoints, 10 frontend routes, 463 tests plus 33 subtests
 - A **statistical tool** — transparent, reproducible, auditable
 
 ### What this prototype is not

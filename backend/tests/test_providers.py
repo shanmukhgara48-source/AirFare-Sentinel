@@ -10,6 +10,7 @@ Covers:
 These tests do NOT make any network calls.
 """
 import unittest
+from unittest.mock import patch
 
 from app.providers.base import ProviderNotConfiguredError
 from app.providers.demo import DemoProvider
@@ -117,6 +118,89 @@ class TestAmadeusProvider(unittest.TestCase):
         s = self.provider.status()
         self.assertIsInstance(s["message"], str)
         self.assertGreater(len(s["message"]), 10)
+
+    def test_whitespace_credentials_are_not_treated_as_configured(self):
+        from app.config import settings
+        with (
+            patch.object(settings, "amadeus_client_id", "   "),
+            patch.object(settings, "amadeus_client_secret", "   "),
+        ):
+            self.assertFalse(self.provider.is_configured())
+
+    def test_masked_diagnostics_reveal_no_secret_characters(self):
+        from app.config import settings
+        with patch.object(settings, "amadeus_client_secret", "super-secret-value"):
+            masked = settings.masked_credentials()["amadeus_client_secret"]
+        self.assertEqual(masked, "(set)")
+        self.assertNotIn("super", masked)
+
+    def test_connecting_offer_is_one_complete_itinerary_quote(self):
+        offer = {
+            "id": "offer-1",
+            "validatingAirlineCodes": ["AI"],
+            "price": {"grandTotal": "6200.00", "base": "5000.00"},
+            "itineraries": [{
+                "segments": [
+                    {
+                        "id": "1",
+                        "departure": {"iataCode": "DEL", "at": "2026-09-15T08:00:00"},
+                        "arrival": {"iataCode": "HYD", "at": "2026-09-15T10:00:00"},
+                        "carrierCode": "AI",
+                        "number": "101",
+                    },
+                    {
+                        "id": "2",
+                        "departure": {"iataCode": "HYD", "at": "2026-09-15T11:00:00"},
+                        "arrival": {"iataCode": "BOM", "at": "2026-09-15T12:30:00"},
+                        "carrierCode": "AI",
+                        "number": "202",
+                    },
+                ],
+            }],
+            "travelerPricings": [{
+                "fareDetailsBySegment": [
+                    {"segmentId": "1", "cabin": "ECONOMY"},
+                    {"segmentId": "2", "cabin": "ECONOMY"},
+                ],
+            }],
+        }
+        rows = self.provider._normalize_offer(
+            offer,
+            "2026-09-01",
+            requested_origin="DEL",
+            requested_destination="BOM",
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["origin"], "DEL")
+        self.assertEqual(rows[0]["destination"], "BOM")
+        self.assertEqual(rows[0]["flight_number"], "AI101/AI202")
+        self.assertEqual(rows[0]["total_fare"], 6200.0)
+
+    def test_group_offer_is_normalized_to_per_traveler_fare(self):
+        offer = {
+            "id": "offer-2",
+            "price": {"grandTotal": "10000.00", "base": "8000.00"},
+            "itineraries": [{"segments": [{
+                "id": "1",
+                "departure": {"iataCode": "DEL", "at": "2026-09-15T08:00:00"},
+                "arrival": {"iataCode": "BOM", "at": "2026-09-15T10:00:00"},
+                "carrierCode": "AI",
+                "number": "101",
+            }]}],
+            "travelerPricings": [
+                {"fareDetailsBySegment": [{"segmentId": "1", "cabin": "ECONOMY"}]},
+                {"fareDetailsBySegment": [{"segmentId": "1", "cabin": "ECONOMY"}]},
+            ],
+        }
+        (row,) = self.provider._normalize_offer(
+            offer,
+            "2026-09-01",
+            requested_origin="DEL",
+            requested_destination="BOM",
+            requested_adults=2,
+        )
+        self.assertEqual(row["total_fare"], 5000.0)
+        self.assertEqual(row["base_fare"], 4000.0)
 
 
 # ─── Provider registry ────────────────────────────────────────────────────────

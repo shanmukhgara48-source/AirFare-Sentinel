@@ -19,6 +19,20 @@ def _obs(origin, destination, fare):
     return {"origin": origin, "destination": destination, "total_fare": fare}
 
 
+def _series_obs(origin, destination, start_fare, end_fare):
+    base = {
+        "origin": origin,
+        "destination": destination,
+        "airline": "SA1",
+        "fare_class": "ECONOMY_SAVER",
+        "lead_bucket": "D15_30",
+    }
+    return [
+        {**base, "quote_date": "2026-01-01", "total_fare": start_fare},
+        {**base, "quote_date": "2026-01-02", "total_fare": end_fare},
+    ]
+
+
 def _spike(origin, destination, impact=50.0, direction="spike"):
     return {
         "origin": origin,
@@ -93,6 +107,7 @@ class TestComputeFairnessEmpty:
             assert row["alert_count"] == 0
             assert row["avg_fare"] is None
             assert row["avg_impact_score"] is None
+            assert row["avg_exposure_proxy"] is None
             assert row["fare_pressure"] is None
 
     def test_empty_has_descriptions(self):
@@ -215,6 +230,7 @@ class TestAlertCounting:
         result = compute_fairness(obs, spikes)
         metro = _cat(result, "Metro")
         assert metro["avg_impact_score"] == pytest.approx(50.0, abs=0.1)
+        assert metro["avg_exposure_proxy"] == pytest.approx(50.0, abs=0.1)
 
     def test_drop_impact_excluded_from_avg(self):
         obs = [_obs("DEL", "BOM", 5000)] * 2
@@ -231,41 +247,39 @@ class TestAlertCounting:
 # ── compute_fairness — fare pressure ─────────────────────────────────────────
 
 class TestFarePressure:
-    def _two_cat_result(self, metro_fare, other_fare):
-        """Metro vs Connectivity-sensitive comparison."""
+    def _two_cat_result(self, metro_change, other_change):
+        """Metro vs Connectivity-sensitive like-for-like index comparison."""
         obs = (
-            [_obs("DEL", "BOM", metro_fare)] +
-            [_obs("DEL", "MAA", other_fare)]
+            _series_obs("DEL", "BOM", 5000, 5000 * (1 + metro_change))
+            + _series_obs("DEL", "MAA", 9000, 9000 * (1 + other_change))
         )
         return compute_fairness(obs, [])
 
-    def test_high_fare_pressure_above_basket(self):
-        # Metro fare 50% above basket median → High
-        result = self._two_cat_result(15000, 5000)
+    def test_high_fare_pressure_above_basket_index_change(self):
+        result = self._two_cat_result(1.0, 0.0)
         metro = _cat(result, "Metro")
-        # basket_median = median([15000, 5000]) = 10000; 15000/10000 = 1.5 > 1.10
         assert metro["fare_pressure"] == "High"
+        assert metro["relative_to_basket_pts"] > 2.0
 
-    def test_low_fare_pressure_below_basket(self):
-        result = self._two_cat_result(4000, 10000)
+    def test_low_fare_pressure_below_basket_index_change(self):
+        result = self._two_cat_result(0.0, 1.0)
         metro = _cat(result, "Metro")
-        # basket_median = 7000; 4000/7000 ≈ 0.57 < 0.90
         assert metro["fare_pressure"] == "Low"
+        assert metro["relative_to_basket_pts"] < -2.0
 
-    def test_moderate_fare_pressure_near_basket(self):
-        # Both categories have the same fares → both Moderate
-        obs = [_obs("DEL", "BOM", 5000), _obs("DEL", "MAA", 5000)]
-        result = compute_fairness(obs, [])
+    def test_moderate_fare_pressure_when_indices_move_together(self):
+        result = self._two_cat_result(0.10, 0.10)
         metro = _cat(result, "Metro")
         assert metro["fare_pressure"] == "Moderate"
 
-    def test_fare_pressure_boundary_exactly_110pct(self):
-        # avg/basket_median = 1.10 → exactly at boundary → Moderate (> not >=)
-        obs = [_obs("DEL", "BOM", 11000), _obs("DEL", "MAA", 10000)]
-        result = compute_fairness(obs, [])
+    def test_different_price_levels_without_change_are_not_high_pressure(self):
+        result = self._two_cat_result(0.0, 0.0)
         metro = _cat(result, "Metro")
-        # basket_median = median([11000, 10000]) = 10500; 11000/10500 ≈ 1.047 → Moderate
-        assert metro["fare_pressure"] in {"Moderate", "High"}
+        connectivity = _cat(result, "Connectivity-sensitive")
+        assert metro["fare_pressure"] == "Moderate"
+        assert connectivity["fare_pressure"] == "Moderate"
+        assert metro["index_change_pct"] == 0.0
+        assert connectivity["index_change_pct"] == 0.0
 
     def test_tier2_fare_pressure_none_when_empty(self):
         obs = [_obs("DEL", "BOM", 5000)]
@@ -331,7 +345,8 @@ class TestStructural:
         required = {
             "category", "description", "route_count", "observation_count",
             "avg_fare", "median_fare", "alert_count", "alert_rate",
-            "avg_impact_score", "fare_pressure", "routes",
+            "avg_exposure_proxy", "avg_impact_score", "index_value",
+            "index_change_pct", "relative_to_basket_pts", "fare_pressure", "routes",
         }
         for row in result:
             assert required.issubset(set(row.keys()))

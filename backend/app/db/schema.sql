@@ -65,6 +65,16 @@ CREATE TABLE IF NOT EXISTS ingestion_batches (
   quarantined_count INTEGER NOT NULL
 );
 
+-- Exactly one provenance cohort is active for analytical endpoints at a time.
+-- Stored demo/imported/live rows may coexist, but are never silently combined.
+CREATE TABLE IF NOT EXISTS analysis_state (
+  id                 INTEGER PRIMARY KEY CHECK (id = 1),
+  active_source_type TEXT CHECK (active_source_type IN ('demo', 'live', 'imported')),
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT OR IGNORE INTO analysis_state (id, active_source_type) VALUES (1, NULL);
+
 -- Every row that failed validation, kept with the reason it failed.
 CREATE TABLE IF NOT EXISTS quarantined_rows (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,

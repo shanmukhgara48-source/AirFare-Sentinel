@@ -1,5 +1,5 @@
 """Shared observation-fetching with the filter set every screen uses."""
-from app.db.database import get_connection
+from app.db.database import get_active_source_type, get_connection
 from app.model import LEAD_BUCKET_CODES, LEAD_BUCKET_LABELS
 
 
@@ -12,6 +12,7 @@ def fetch_observations(
     travel_date_from: str | None = None,
     travel_date_to: str | None = None,
     source_type: str | None = None,
+    include_all_sources: bool = False,
 ) -> list[dict]:
     clauses = []
     params: list = []
@@ -33,9 +34,12 @@ def fetch_observations(
     if travel_date_to:
         clauses.append("travel_date <= ?")
         params.append(travel_date_to)
-    if source_type:
+    selected_source = source_type
+    if selected_source is None and not include_all_sources:
+        selected_source = get_active_source_type()
+    if selected_source:
         clauses.append("source_type = ?")
-        params.append(source_type.lower())
+        params.append(selected_source.lower())
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     sql = f"SELECT * FROM observations {where} ORDER BY quote_date"
@@ -48,23 +52,34 @@ def fetch_observations(
 
 
 def fetch_filter_options() -> dict:
+    active_source = get_active_source_type()
     conn = get_connection()
     try:
+        where = " WHERE source_type = ?" if active_source else ""
+        params = (active_source,) if active_source else ()
         routes = conn.execute(
-            "SELECT DISTINCT origin, destination FROM observations ORDER BY origin, destination"
+            "SELECT DISTINCT origin, destination FROM observations" + where
+            + " ORDER BY origin, destination",
+            params,
         ).fetchall()
         airlines = conn.execute(
-            "SELECT DISTINCT airline FROM observations ORDER BY airline"
+            "SELECT DISTINCT airline FROM observations" + where + " ORDER BY airline",
+            params,
         ).fetchall()
         fare_classes = conn.execute(
-            "SELECT DISTINCT fare_class FROM observations ORDER BY fare_class"
+            "SELECT DISTINCT fare_class FROM observations" + where + " ORDER BY fare_class",
+            params,
         ).fetchall()
         present_buckets = {
             r["lead_bucket"]
-            for r in conn.execute("SELECT DISTINCT lead_bucket FROM observations").fetchall()
+            for r in conn.execute(
+                "SELECT DISTINCT lead_bucket FROM observations" + where, params
+            ).fetchall()
         }
         date_range = conn.execute(
-            "SELECT MIN(travel_date) AS min_date, MAX(travel_date) AS max_date FROM observations"
+            "SELECT MIN(travel_date) AS min_date, MAX(travel_date) AS max_date "
+            "FROM observations" + where,
+            params,
         ).fetchone()
 
         source_types = [
@@ -85,6 +100,7 @@ def fetch_filter_options() -> dict:
                 if code in present_buckets
             ],
             "source_types": source_types,
+            "active_source_type": active_source,
             "travel_date_min": date_range["min_date"],
             "travel_date_max": date_range["max_date"],
         }

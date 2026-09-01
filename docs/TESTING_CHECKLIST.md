@@ -11,7 +11,7 @@ source .venv/bin/activate
 python -m pytest tests -q
 ```
 
-- [ ] `463 passed, 33 subtests passed`
+- [ ] `468 passed, 33 subtests passed`
 - [ ] No warnings or failures
 - [ ] The test run does not change `backend/apix.db` (tests use a temporary DB)
 
@@ -43,16 +43,19 @@ npm run dev
 - [ ] Load sample data reports 23,558 accepted and 0 quarantined
 - [ ] Header/Overview show **Demo dataset (synthetic)** provenance
 
-With both servers running, execute `npm run smoke` from `frontend/`; it must
-visit all 10 routes in Judge Mode without console warnings, page exceptions, or
-failed API responses.
+With both servers running, execute `npm run test:interaction` from `frontend/`.
+It clears and restores the deterministic sample, then tests Start Judge Demo,
+Overview and Vulnerability filters, Case File threshold/evidence/Escape, the
+Competition and Fairness drawers, What-If slider persistence, Judge Mode on all
+10 routes, mobile document overflow, console warnings/errors, page exceptions,
+and failed API responses.
 
 ## Five-Minute Path
 
-- [ ] Overview: headline, six stat tiles, chart, route/carrier sections, and event disclaimer render
+- [ ] Overview: publication gate, six stat tiles, chart, route/carrier sections, and event disclaimer render
 - [ ] Fare Alerts: rows render; changing threshold completes cleanly
 - [ ] Case File: opens, scrolls, closes by button and Escape, and shows evidence
-- [ ] Competition: route table/heatmap and detail drawer render
+- [ ] Competition: Route Competition Monitor table and detail drawer render
 - [ ] Vulnerability: all five lead buckets render and filters recalculate
 - [ ] Fairness Lens: categories render; Tier-2 limitation and Unclassified policy are visible
 - [ ] What-If: current headline baseline loads; sliders update backend-derived output
@@ -75,7 +78,8 @@ failed API responses.
 
 - [ ] Bundled sample rows export with **Demo dataset (synthetic)** notice
 - [ ] A test CSV upload is labelled **Imported dataset**, never Live
-- [ ] Hybrid is shown only when multiple source types are actually stored
+- [ ] Stored state can be hybrid, but Active Analysis Dataset always names one source cohort
+- [ ] Switching active source changes analysis counts; no analysis response combines provenance types
 - [ ] No screen calls synthetic event dates or prototype weights official/current data
 - [ ] No real airline claim appears while using fictional sample carriers
 

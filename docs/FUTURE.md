@@ -44,7 +44,7 @@
 
 | Improvement | What changes | Impact |
 |------------|-------------|--------|
-| **Authentication** | MoSPI SSO or OAuth2 for admin endpoints. The demo restricts browser origins through CORS but has no authentication or authorization (noted with a `TODO` in code). | Production security |
+| **Authentication** | MoSPI SSO or OAuth2 for admin endpoints. The demo restricts browser origins through CORS but has no authentication or authorization; the backend labels this as a production deployment boundary. | Production security |
 | **Role-based access** | Separate analyst (read-only) and admin (data management) roles. | Prevent accidental data deletion |
 | **Audit logging** | Log all admin actions (who loaded data, who cleared the database, when). | Compliance and accountability |
 | **Publication workflow** | Draft → review → approve → publish pipeline for index releases. | Official statistical release process |

@@ -22,7 +22,7 @@ import {
   Select,
   Spinner,
 } from '../components/ui'
-import { axisProps, gridProps, tooltipProps } from '../components/chart'
+import { axisProps, chartLabel, chartNumber, gridProps, tooltipProps } from '../components/chart'
 import { useJudgeMode } from '../context/judgeModeContext'
 
 export default function Trends() {
@@ -241,7 +241,7 @@ export default function Trends() {
                   width={54}
                   tickFormatter={(v: number) => v.toFixed(1)}
                 />
-                <Tooltip {...tooltipProps} formatter={(v: any) => [Number(v).toFixed(2), 'Index']} />
+                <Tooltip {...tooltipProps} formatter={(value: unknown) => [chartNumber(value).toFixed(2), 'Index']} />
                 <Line
                   type="monotone"
                   dataKey="apix_value"
@@ -273,11 +273,11 @@ export default function Trends() {
                   />
                   <Tooltip
                     {...tooltipProps}
-                    formatter={(v: any, n: any) => [
-                      formatINR(Number(v)),
-                      n === 'avg_fare' ? 'Average' : 'Median',
+                    formatter={(value: unknown, name: unknown) => [
+                      formatINR(chartNumber(value)),
+                      chartLabel(name) === 'avg_fare' ? 'Average' : 'Median',
                     ]}
-                    labelFormatter={(l: any) => `Booked ${l} before departure`}
+                    labelFormatter={(label: unknown) => `Booked ${chartLabel(label)} before departure`}
                   />
                   <Bar dataKey="avg_fare" fill="#b45309" radius={[3, 3, 0, 0]} />
                   <Bar dataKey="median_fare" fill="#e0b080" radius={[3, 3, 0, 0]} />
@@ -311,11 +311,11 @@ export default function Trends() {
                   />
                   <Tooltip
                     {...tooltipProps}
-                    formatter={(v: any, n: any) => [
-                      formatINR(Number(v)),
-                      n === 'avg_fare' ? 'Average' : 'Median',
+                    formatter={(value: unknown, name: unknown) => [
+                      formatINR(chartNumber(value)),
+                      chartLabel(name) === 'avg_fare' ? 'Average' : 'Median',
                     ]}
-                    labelFormatter={(l: any) => formatClass(String(l))}
+                    labelFormatter={(label: unknown) => formatClass(chartLabel(label))}
                   />
                   <Bar dataKey="avg_fare" fill="#0b6e6e" radius={[3, 3, 0, 0]} />
                   <Bar dataKey="median_fare" fill="#8fc4c2" radius={[3, 3, 0, 0]} />

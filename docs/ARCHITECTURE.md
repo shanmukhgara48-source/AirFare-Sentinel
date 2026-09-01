@@ -20,7 +20,7 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │                     FastAPI (Python 3.12+)                          │
 │                                                                     │
-│  main.py ─── 24 API endpoints                                      │
+│  main.py ─── 26 API endpoints                                      │
 │     │                                                               │
 │     ├── engine/index.py ─── Laspeyres + Jevons index computation   │
 │     ├── engine/anomaly.py ─── robust z-score spike detection        │
@@ -38,6 +38,7 @@
 │                                                                     │
 │  observations ─── 23,558 rows (synthetic)                          │
 │  route_weights ─── 14 directional routes                           │
+│  analysis_state ─── one active provenance cohort                    │
 │  ingestion_batches ─── upload history                              │
 │  quarantined_rows ─── rejected rows with reason codes              │
 └──────────────────────────────────────────────────────────────────────┘
@@ -56,11 +57,11 @@
 | `pages/Trends.tsx` | Filtered index series, booking curve, fare class breakdown |
 | `pages/Compare.tsx` | Route-vs-route and airline-vs-airline comparison |
 | `pages/Spikes.tsx` | Anomaly detection results with adjustable threshold |
-| `pages/Competition.tsx` | Observation-share concentration proxy and route detail |
-| `pages/Vulnerability.tsx` | Lead-time vulnerability scoring and filters |
-| `pages/Fairness.tsx` | Policy-category monitoring with Unclassified fallback |
-| `pages/Whatif.tsx` | Backend-derived deterministic scenario planning |
-| `pages/Admin.tsx` | Data ingestion, observation browser, clear data |
+| `pages/Competition.tsx` | Route Competition Monitor using an observation-share proxy |
+| `pages/Vulnerability.tsx` | Within-cell residual-volatility scoring and filters |
+| `pages/Fairness.tsx` | Like-for-like category indices with Unclassified fallback |
+| `pages/Whatif.tsx` | Backend-derived uncalibrated scenario formula |
+| `pages/Admin.tsx` | Data ingestion, active-source selection, observation browser, clear data |
 | `pages/Methodology.tsx` | Full methodology explanation with formulas and worked example |
 | `components/Layout.tsx` | Navigation, page container |
 | `components/ui.tsx` | Reusable card, badge, table components |
@@ -70,10 +71,10 @@
 
 ### 2. API layer (FastAPI)
 
-24 endpoints organized into four groups:
+26 endpoints organized into four groups:
 
 **Dashboard endpoints** (read-only, no auth needed for demo):
-- `GET /api/overview` — national dashboard data with index series
+- `GET /api/overview` — publication-gated basket indicator with index series
 - `GET /api/filters` — available filter values
 - `GET /api/trends` — filtered index with booking curve
 - `GET /api/spikes` — anomaly detection with adjustable threshold
@@ -94,6 +95,7 @@
 **Admin endpoints** (would be auth-gated in production):
 - `POST /api/admin/load-sample` — load bundled synthetic data
 - `POST /api/admin/upload` — ingest a CSV file
+- `GET/POST /api/admin/analysis-source` — inspect or switch the isolated provenance cohort
 - `GET /api/admin/batches` — ingestion history
 - `GET /api/admin/observations` — raw observation browser
 - `DELETE /api/admin/data` — clear all data
@@ -120,8 +122,9 @@ testable in isolation:
 - Dual threshold: statistical (z > 3.5) AND economic (> 25% deviation)
 
 Additional engines cover event context, competition, vulnerability, fairness,
-and what-if scenarios. Their thresholds and component weights are explicit in
-source and surfaced in the UI.
+and what-if scenarios. Vulnerability removes within-cell price levels before
+aggregating residual volatility. Fairness compares category index movement with
+basket index movement. What-If coefficients are explicitly uncalibrated.
 
 ### 4. Data model (`model.py`)
 
@@ -158,12 +161,13 @@ quarantined with a named reason:
 
 ### 6. Database (SQLite)
 
-4 tables with CHECK constraints enforcing data integrity at the database level:
+5 tables with CHECK constraints enforcing data integrity at the database level:
 
 - `observations` — fare data with UNIQUE constraint preventing duplicates
 - `route_weights` — traffic-proportional weights
 - `ingestion_batches` — upload audit trail
 - `quarantined_rows` — rejected rows with reason codes
+- `analysis_state` — the one active demo/imported/live provenance cohort
 
 Indexes on comparability cell fields, quote date, travel date, and lead bucket for query performance.
 
@@ -189,7 +193,7 @@ CSV file, sample data, or provider quote snapshot
          │
          ▼
 ┌─────────────────────┐
-│  fetch_observations()   │ ← filtered SQL query
+│  fetch_observations()   │ ← filtered SQL query + active-source isolation
 └────────┬────────────┘
          │
     ┌────┴────┐
@@ -234,7 +238,7 @@ add Redis, materialized views, or scheduled pre-computation after benchmarking.
 ### Why pure functions in the engine?
 
 `engine/index.py` and `engine/anomaly.py` take lists of dicts and return lists of dicts. No database dependency. This means:
-- 463 tests plus 33 subtests run against an isolated temporary SQLite database
+- 468 tests plus 33 subtests run against an isolated temporary SQLite database
 - The same functions work on CSV data (integration tests) and DB data (API)
 - Easy to swap the storage layer without touching computation logic
 

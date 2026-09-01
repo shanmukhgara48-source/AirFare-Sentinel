@@ -56,7 +56,7 @@ Price relative = Today's geometric mean fare ÷ Reference price
 - If it is **0.95**, fares have fallen 5%.
 - If it is **1.00**, no change.
 
-### Step 4: Combine cells into a national index (weighted)
+### Step 4: Combine cells into a prototype basket indicator (weighted)
 
 Now we need one number for the whole market. We use a **weighted average** of all
 the price relatives.
@@ -76,8 +76,9 @@ in the reference-cell universe, then across the five lead-time buckets and four
 fare classes. A route therefore keeps the same headline influence whether one
 or several carriers are observed.
 
-This means a 10% rise on Delhi-Mumbai moves the headline index more than a 10%
-rise on Bangalore-Hyderabad — which is correct, because it affects more passengers.
+This means a 10% rise on Delhi-Mumbai moves the prototype basket more than a 10%
+rise on Bangalore-Hyderabad because the illustrative weight is larger. That is a
+method demonstration, not evidence of the number of passengers currently affected.
 
 ### Step 5: Publish a sensitivity check (unweighted)
 
@@ -134,7 +135,7 @@ it tells the analyst that the weighting scheme matters for this period.
 | **No imputation of missing data** | If a cell has no observation, we don't guess — we just note smaller coverage. Inventing a price for an official statistic is worse than a smaller sample honestly reported. |
 | **4-component price anatomy** | `total = base + surcharge + taxes + airport`. Supports component analysis when the source supplies those values; legacy two-component rows use a documented prototype split. |
 | **Robust z-score for anomalies** | Uses median and MAD instead of mean and standard deviation. A single extreme fare can inflate a standard deviation enough to hide itself — it cannot move a median. |
-| **Quality flags** (GREEN/AMBER/RED) | Coverage ≥90% = GREEN, 80-90% = AMBER, <80% = RED. These are explicit prototype publication gates. |
+| **Quality flags** (GREEN/AMBER/RED) | Coverage ≥90% = GREEN, 80-90% = AMBER, <80% = RED. RED suppresses the national label and exposes only an Experimental Basket Indicator with the reason. |
 
 ---
 
@@ -145,7 +146,7 @@ it tells the analyst that the weighting scheme matters for this period.
        │
        ▼
   ┌─────────────┐     quarantined rows
-  │  VALIDATOR   │────────────────────► audit log
+  │  VALIDATOR   │────────────────────► quarantine records
   │  (12 checks) │
   └──────┬───────┘
          │ clean observations
@@ -167,7 +168,7 @@ it tells the analyst that the weighting scheme matters for this period.
   │              AGGREGATION                │
   │                                         │
   │  Weighted Laspeyres    Unweighted Jevons│
-  │  (headline)            (sensitivity)    │
+  │  (publication-gated)   (sensitivity)    │
   │  100 × Σ W·R           100 × exp(mean   │
   │                         ln R)           │
   └──────┬──────────────────┬───────────────┘
@@ -200,9 +201,10 @@ it tells the analyst that the weighting scheme matters for this period.
    tax, and airport-charge movement. Legacy two-component rows use an illustrative
    split and must not be interpreted as observed component values.
 
-5. **Reproducible and auditable.** Every rejected row is stored with its reason. The
-   sample dataset is deterministic (seed 26056). Any judge can re-run the code and
-   get identical results.
+5. **Reproducible calculation evidence.** Every rejected row is stored with its
+   reason. Overview and alert evidence carries method version, batch IDs, a dataset
+   fingerprint, calculation parameters, and calculation ID. This is not an immutable
+   authenticated audit log.
 
 ---
 
@@ -223,7 +225,8 @@ it tells the analyst that the weighting scheme matters for this period.
 > compared only against the same route, airline, cabin class, and booking window.
 > We aggregate using illustrative traffic weights so that trunk routes count
 > proportionally, with current DGCA calibration required for production.
-> The index reads 100 at the start — above 100 means fares have risen, below means
-> they've fallen. We publish a sensitivity check alongside the headline so analysts
+> The indicator reads 100 at the start — above 100 means matched basket fares have
+> risen, below means they've fallen. A RED coverage gate suppresses the national
+> label. We publish a sensitivity check alongside the indicator so analysts
 > can see whether the weighting changes the story. Missing data is never imputed,
 > and every period reports its actual coverage with a traffic-light quality flag."

@@ -66,11 +66,11 @@ FESTIVAL_WINDOWS = [
 ]
 
 REASON_GLOSSARY = {
-    "LEAD_TIME_SURGE": "Last-minute booking (0–3 days) where the short lead time is the dominant price driver.",
-    "FESTIVAL_PATTERN": "Travel date falls in a known festive/holiday window that produces predictable fare surges.",
-    "CARRIER_SPECIFIC_SPIKE": "The anomaly is isolated to one carrier while others on the same route are normal.",
-    "LOW_COMPETITION_ROUTE": "Route has ≤ 2 active carriers, limiting competitive pressure on fares.",
-    "ROUTE_LEVEL_SPIKE": "Multiple carriers on this route show elevated fares in the same period.",
+    "LEAD_TIME_SURGE": "Flagged observation is in the 0–3 day booking bucket; this is context, not a causal finding.",
+    "FESTIVAL_PATTERN": "Travel date overlaps an approximate recurring demo event window; route relevance and causality are unverified.",
+    "CARRIER_SPECIFIC_SPIKE": "Only one carrier on the route has flagged observations in the analysed dataset; same-period normality is not inferred.",
+    "LOW_COMPETITION_ROUTE": "The analysed dataset contains ≤ 2 carriers on the route; this may reflect collection coverage rather than market structure.",
+    "ROUTE_LEVEL_SPIKE": "More than one carrier on the route has flagged observations somewhere in the analysed dataset; simultaneity is not inferred.",
     "FARE_DROP_OUTLIER": "Fare is significantly below its cell median — possible promotional pricing or data error.",
     "LOW_COVERAGE_WARNING": "Cell has fewer than 15 observations; the statistical baseline may be unreliable.",
 }
@@ -143,11 +143,11 @@ def explain_spike(spike: dict) -> str:
     )
 
     reason_detail = {
-        "LEAD_TIME_SURGE": " The 0–3 day booking window is the strongest price driver — last-minute scarcity is the likely cause.",
-        "FESTIVAL_PATTERN": f" Travel date {spike['travel_date']} falls in a festive/holiday window when demand surges are expected.",
-        "CARRIER_SPECIFIC_SPIKE": f" This spike is isolated to {spike['airline']} — other carriers on {spike['route']} are pricing normally.",
-        "LOW_COMPETITION_ROUTE": f" {spike['route']} has limited carrier competition, reducing downward price pressure.",
-        "ROUTE_LEVEL_SPIKE": f" Multiple carriers on {spike['route']} show elevated fares in this period, suggesting a market-wide event.",
+        "LEAD_TIME_SURGE": " This observation is in the 0–3 day bucket; the data do not establish scarcity as its cause.",
+        "FESTIVAL_PATTERN": f" Travel date {spike['travel_date']} overlaps an approximate recurring demo event window; route relevance and causality are unverified.",
+        "CARRIER_SPECIFIC_SPIKE": f" Only {spike['airline']} produced a flagged observation on {spike['route']} in this analysed dataset; this does not prove other carriers were normal at the same time.",
+        "LOW_COMPETITION_ROUTE": f" The analysed rows for {spike['route']} contain at most two carriers; observation coverage is not a market-share measure.",
+        "ROUTE_LEVEL_SPIKE": f" More than one carrier on {spike['route']} has a flag in the analysed dataset; the calculation does not establish that the flags were simultaneous or causal.",
         "FARE_DROP_OUTLIER": " This fare is unusually low — possible promotional pricing, error, or inventory dump.",
         "LOW_COVERAGE_WARNING": f" Note: this cell has only {spike['cell_observations']} observations; the statistical baseline may be thin.",
     }
@@ -167,7 +167,7 @@ def recommend_action(severity: str, direction: str) -> str:
     return "Log for trend monitoring. No immediate action required unless pattern repeats."
 
 
-# ─── Passenger Impact Score ─────────────────────────────────────────────────
+# ─── Passenger Exposure Proxy ───────────────────────────────────────────────
 # A decision-support indicator combining route traffic weight, fare deviation
 # magnitude, booking-window urgency, detection severity and baseline confidence.
 # Not an exact passenger count — clearly labelled as such in the UI.
@@ -193,7 +193,7 @@ _CONFIDENCE_FACTOR: dict[str, float] = {
 }
 
 
-def compute_impact_score(
+def compute_exposure_proxy(
     route: str,
     abs_pct_deviation: float,
     lead_bucket: str,
@@ -201,7 +201,10 @@ def compute_impact_score(
     confidence: str,
 ) -> int:
     """
-    Passenger Impact Score (0–100).
+    Passenger Exposure Proxy (0–100).
+
+    This prioritisation proxy uses illustrative route weights; it does not use
+    passenger counts, bookings, load factors, or measured consumer harm.
 
     Formula:
         score = route_weight_pct
@@ -232,6 +235,19 @@ def compute_impact_score(
         * _CONFIDENCE_FACTOR.get(confidence, 1.0)
     )
     return min(100, max(0, round(raw)))
+
+
+def compute_impact_score(
+    route: str,
+    abs_pct_deviation: float,
+    lead_bucket: str,
+    severity: str,
+    confidence: str,
+) -> int:
+    """Backward-compatible alias for ``compute_exposure_proxy``."""
+    return compute_exposure_proxy(
+        route, abs_pct_deviation, lead_bucket, severity, confidence
+    )
 
 
 def _median_abs_deviation(values: list[float], median: float) -> float:
@@ -280,7 +296,7 @@ def detect_spikes(
             abs_pct = abs(pct)
             sev = classify_severity(abs_z, abs_pct)
             conf = classify_confidence(len(rows))
-            impact = compute_impact_score(
+            exposure = compute_exposure_proxy(
                 route=f"{row['origin']}-{row['destination']}",
                 abs_pct_deviation=abs_pct,
                 lead_bucket=row["lead_bucket"],
@@ -313,7 +329,9 @@ def detect_spikes(
                 "direction": direction,
                 "severity": sev,
                 "confidence": conf,
-                "impact_score": impact,
+                "exposure_proxy": exposure,
+                "impact_score": exposure,  # deprecated API alias
+                "source_batch_id": row.get("source_batch_id"),
                 "source_type": source_type,
                 "provider": provider,
                 "source_label": source_label,

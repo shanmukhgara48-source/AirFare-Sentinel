@@ -119,6 +119,8 @@ class TestSpikeEvidenceFields(unittest.TestCase):
     def test_has_impact_score_in_range(self):
         for spike in self.flagged[:10]:
             self.assertIn("impact_score", spike)
+            self.assertIn("exposure_proxy", spike)
+            self.assertEqual(spike["impact_score"], spike["exposure_proxy"])
             self.assertGreaterEqual(spike["impact_score"], 0)
             self.assertLessEqual(spike["impact_score"], 100)
 

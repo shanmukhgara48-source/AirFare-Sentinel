@@ -395,5 +395,60 @@ class TestJudgeDemoPath(unittest.TestCase):
         self.assertEqual(blocked_fetch.status_code, 409)
 
 
+class TestAnalysisSourceIsolation(unittest.TestCase):
+    def setUp(self):
+        client.post("/api/admin/load-sample")
+
+    def test_import_does_not_form_silent_hybrid_analysis(self):
+        uploaded = client.post(
+            "/api/admin/upload",
+            files={"file": ("fares.csv", GOOD_CSV.encode(), "text/csv")},
+        )
+        self.assertEqual(uploaded.status_code, 200)
+        self.assertEqual(uploaded.json()["accepted_count"], 2)
+
+        version = client.get("/api/version").json()
+        self.assertEqual(version["active_analysis_source"], "imported")
+        self.assertEqual(version["dataset_mode"], "imported")
+        self.assertEqual(version["stored_dataset"]["dataset_mode"], "hybrid")
+        self.assertEqual(version["available_analysis_sources"], ["demo", "imported"])
+
+        imported_overview = client.get("/api/overview").json()
+        self.assertEqual(imported_overview["observation_count"], 2)
+        self.assertEqual(
+            imported_overview["evidence"]["audit"]["source_types"], ["imported"]
+        )
+
+        selected = client.post(
+            "/api/admin/analysis-source?source_type=demo"
+        )
+        self.assertEqual(selected.status_code, 200)
+        demo_overview = client.get("/api/overview").json()
+        self.assertEqual(demo_overview["observation_count"], 23558)
+        self.assertEqual(demo_overview["evidence"]["audit"]["source_types"], ["demo"])
+
+    def test_cannot_select_a_source_that_has_no_rows(self):
+        response = client.post("/api/admin/analysis-source?source_type=live")
+        self.assertEqual(response.status_code, 409)
+
+    def test_publication_gate_suppresses_red_national_headline(self):
+        body = client.get("/api/overview").json()
+        self.assertEqual(body["coverage"]["quality_flag"], "RED")
+        self.assertEqual(body["publication_status"], "SUPPRESSED")
+        self.assertFalse(body["headline_publishable"])
+        self.assertEqual(body["indicator_name"], "Experimental Basket Indicator")
+        self.assertIn("must not be quoted as a national index", body["suppression_reason"])
+
+    def test_evidence_has_reproducible_calculation_metadata(self):
+        evidence = client.get("/api/spikes?threshold=5").json()["evidence"]
+        audit = evidence["audit"]
+        self.assertEqual(audit["parameters"]["robust_z_threshold"], 5.0)
+        self.assertEqual(audit["source_types"], ["demo"])
+        self.assertEqual(audit["observation_count"], 23558)
+        self.assertTrue(audit["calculation_id"])
+        self.assertEqual(len(audit["dataset_fingerprint_sha256"]), 64)
+        self.assertIn("not an immutable", audit["audit_scope"])
+
+
 if __name__ == "__main__":
     unittest.main()

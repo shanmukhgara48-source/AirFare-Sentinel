@@ -16,7 +16,7 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-lg border border-line bg-surface shadow-[0_1px_3px_rgba(15,27,42,0.06)] ${className}`}
+      className={`min-w-0 overflow-hidden rounded-lg border border-line bg-surface shadow-[0_1px_3px_rgba(15,27,42,0.06)] ${className}`}
     >
       {(title || action) && (
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-3.5" style={{ background: 'rgba(240,243,247,0.5)' }}>
@@ -240,7 +240,7 @@ export function JudgePanel({
   items: { q: string; a: string }[]
 }) {
   return (
-    <div className="rounded-lg border border-[#6952a8]/30 bg-[#f7f5ff] overflow-hidden">
+    <div data-testid="judge-panel" className="rounded-lg border border-[#6952a8]/30 bg-[#f7f5ff] overflow-hidden">
       <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-[#6952a8]/15" style={{ background: 'rgba(105,82,168,0.06)' }}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6952a8" strokeWidth="2.5" aria-hidden>
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>

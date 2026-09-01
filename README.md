@@ -1,6 +1,6 @@
 # FarePulse India
 
-**APIx India Airfare Price Index · SIH 2026 · Problem Statement 26056 · MoSPI**
+**Airfare basket-monitoring prototype · SIH 2026 · MoSPI Problem Statement 26056**
 
 FarePulse India is a policy-analytics dashboard for monitoring domestic airfare
 movement. It computes a transparent weighted Laspeyres index with Jevons
@@ -31,8 +31,9 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`, go to **Admin**, and choose **Load sample data**.
-The same action is available by API:
+Open `http://localhost:5173`. If the database is empty, the Overview presents a
+one-click **Start Judge Demo** action that loads the sample and returns to the
+populated app. The same action is available in Admin and by API:
 
 ```bash
 curl -X POST http://localhost:8000/api/admin/load-sample
@@ -54,7 +55,12 @@ Operating mode and stored-data provenance are reported separately:
 | **Demo dataset** | Stored rows came from the deterministic bundled sample |
 | **Imported dataset** | Stored rows came from a user-uploaded CSV; this is not claimed as live |
 | **Live quote snapshots** | Stored rows came from a successful provider call |
-| **Hybrid dataset** | More than one provenance type is present |
+| **Hybrid stored data** | More than one provenance type is stored; analysis still uses one explicitly active source |
+
+Demo, imported, and live rows may coexist in storage, but analysis endpoints do
+not combine them. Loading/importing/fetching selects that provenance cohort as
+active. Admin can switch among stored cohorts, and `/api/version` reports both
+the active analysis source and the overall stored state.
 
 To prepare live ingestion without enabling it, add credentials to
 `backend/.env` and leave `DEMO_MODE=true`. When the team is ready to switch:
@@ -84,12 +90,12 @@ The React application contains 10 routes:
 
 | Page | Judge-facing purpose |
 |---|---|
-| Overview | Headline index, provenance, coverage, filters, routes, carriers, events |
-| Fare Alerts | Robust anomaly queue and auditable case files |
-| Competition | Observation-share HHI proxy and fare-pressure cross-check |
-| Vulnerability | Explainable lead-time vulnerability score |
-| Fairness Lens | Policy-category comparison with unknown routes kept Unclassified |
-| What-If Simulator | Deterministic scenario model; explicitly not a forecast |
+| Overview | Publication-gated basket indicator, provenance, coverage, filters, routes, carriers, events |
+| Fare Alerts | Robust anomaly queue and reproducible case files |
+| Competition | Observation-share competition proxy and fare-pressure cross-check |
+| Vulnerability | Within-cell residual volatility, alert frequency, and explicit urgency assumptions |
+| Fairness Lens | Like-for-like category indices with unknown routes kept Unclassified |
+| What-If Simulator | Uncalibrated deterministic scenario formula; explicitly not a forecast |
 | Trends | Filtered index, booking curve, and fare-class analysis |
 | Compare | Route and carrier rankings |
 | Methodology | Formula, assumptions, quality gates, and limitations |
@@ -100,14 +106,14 @@ the current screen values where applicable and never changes calculations.
 
 ## API Surface
 
-The FastAPI backend exposes 24 application endpoints:
+The FastAPI backend exposes 26 application endpoints:
 
 | Group | Endpoints |
 |---|---|
 | System | `GET /api/health`, `GET /api/version`, `GET /api/provider/status` |
 | Dashboard | `GET /api/filters`, `GET /api/overview`, `GET /api/trends`, `GET /api/spikes`, `GET /api/competition`, `GET /api/vulnerability`, `GET /api/events`, `GET /api/fairness` |
 | Analysis | `GET /api/compare`, `GET /api/contributions`, `GET /api/sensitivity`, `GET /api/head-to-head`, `GET /api/whatif` |
-| Data | `POST /api/admin/load-sample`, `POST /api/admin/upload`, `GET /api/admin/batches`, `GET /api/admin/observations`, `DELETE /api/admin/data`, `POST /api/admin/live-fetch`, `GET /api/admin/live-fetch/status`, `GET /api/export/observations.csv` |
+| Data | `POST /api/admin/load-sample`, `POST /api/admin/upload`, `GET/POST /api/admin/analysis-source`, `GET /api/admin/batches`, `GET /api/admin/observations`, `DELETE /api/admin/data`, `POST /api/admin/live-fetch`, `GET /api/admin/live-fetch/status`, `GET /api/export/observations.csv` |
 
 Interactive OpenAPI documentation is available at `http://localhost:8000/docs`.
 
@@ -121,9 +127,15 @@ Interactive OpenAPI documentation is available at `http://localhost:8000/docs`.
 - Each route weight is divided equally across its observed carriers so carrier
   coverage cannot silently multiply a route's headline influence.
 - Missing cells are not imputed; coverage and quality flags remain visible.
+- RED coverage suppresses a national headline and labels the numeric result
+  **Experimental Basket Indicator** with the reason shown in the UI/API.
 - Alerts require both a robust z-score threshold and a 25% material deviation.
-- Competition, passenger impact, vulnerability, fairness, and what-if outputs
-  are monitoring indicators, not legal findings, forecasts, or official statistics.
+- Competition uses observation shares, not market shares. Passenger Exposure
+  Proxy contains no passenger counts. Vulnerability uses within-cell log-price
+  residuals rather than pooled raw fares. Fairness compares category index
+  movement with basket index movement.
+- What-If coefficients are team-defined, uncited, and uncalibrated; the output
+  is not a forecast, causal estimate, passenger-impact estimate, or policy result.
 
 See [Formula Explained](docs/FORMULA_EXPLAINED.md),
 [Data Dictionary](docs/DATA_DICTIONARY.md), and
@@ -143,7 +155,7 @@ npm run lint
 npm run build
 ```
 
-Current verified baseline: **463 tests and 33 subtests pass**, frontend lint is
+Current verified baseline: **468 tests and 33 subtests pass**, frontend lint is
 warning-free, and the production build completes without chunk-size warnings.
 Tests use an isolated temporary SQLite database and do not overwrite the demo
 database.

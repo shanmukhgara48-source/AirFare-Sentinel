@@ -66,7 +66,8 @@ Routes outside the 14-route prototype basket have no fixed headline weight.
 If a selection contains only such routes, the engine falls back to the
 unweighted Jevons aggregate; in a mixed selection they remain visible in route,
 alert, and fairness outputs but contribute zero to the weighted headline and
-Passenger Impact Score. Production must assign reviewed route weights before
+Passenger Exposure Proxy. The proxy contains no passenger counts, bookings,
+load factors, or measured harm. Production must assign reviewed route weights before
 publishing those routes in a national index.
 
 ### 6. No seasonal adjustment
@@ -86,7 +87,9 @@ the index. No carry-forward, no interpolation, no estimation.
 **Impact:** The headline index for that period reflects fewer cells, and the
 coverage percentage drops. This is a deliberate transparency choice — we
 report the gap rather than inventing a price. The quality flag system (GREEN /
-AMBER / RED) alerts users to low-coverage periods.
+AMBER / RED) alerts users to low-coverage periods. The API and Overview enforce
+the publication gate: RED suppresses the national label and shows only an
+**Experimental Basket Indicator** with an explicit explanation.
 
 ### 8. Geometric mean requires positive fares
 
@@ -97,18 +100,49 @@ rule `NON_POSITIVE_FARE` and database CHECK constraint `base_fare > 0`).
 **Impact:** Free tickets, credits, or negative adjustments cannot be included
 in the index. This is standard practice for price indices.
 
+### 9. Active-source isolation is by provenance cohort
+
+Demo, imported, and live observations may coexist in SQLite, but analytical
+endpoints select exactly one active `source_type`. A successful sample load,
+import, or live fetch makes its cohort active; Admin can switch among available
+cohorts. Sources are never combined implicitly.
+
+**Impact:** This prevents invalid demo/live/imported hybrid analysis. Multiple
+uploads within the same `imported` cohort can still be heterogeneous; a
+production system should add reviewed dataset-series identifiers and schema/
+method compatibility checks per imported release.
+
+### 10. Event windows are approximate demo context
+
+Festival/event dates use recurring month-day windows with illustrative,
+uncited uplift values. Lunar-calendar dates can shift by year, and route
+relevance is not established.
+
+**Impact:** Event overlap is contextual metadata, not evidence of causality or
+an event-adjusted baseline. Production needs a year-aware cited calendar and
+route-specific relevance rules.
+
+### 11. Scenario coefficients are uncalibrated assumptions
+
+The What-If coefficients and magnitude bands are team-defined demonstration
+constants. No external study is claimed as the source of the exact values.
+
+**Impact:** Outputs are directional formula explorations only. They must not be
+used as forecasts, causal estimates, passenger-harm estimates, or policy advice
+until estimated and validated on an appropriate dataset.
+
 ---
 
 ## Technical limitations
 
-### 9. SQLite single-writer constraint
+### 12. SQLite single-writer constraint
 
 SQLite allows only one writer at a time. Concurrent data loads will queue.
 
 **Impact:** Not an issue for demo or single-user operation. Production would
 use PostgreSQL for concurrent access.
 
-### 10. In-memory computation
+### 13. In-memory computation
 
 The index is recomputed from raw observations on every API request. There is
 no caching, no materialized views, no pre-aggregation.
@@ -117,7 +151,7 @@ no caching, no materialized views, no pre-aggregation.
 panel remains practical for local use; much larger panels would need caching
 (Redis), materialized views, or pre-computation.
 
-### 11. No authentication or authorization
+### 14. No authentication or authorization
 
 All API endpoints are open. The CORS policy allows `localhost:5173` only, but
 there is no login, no API key, no role-based access control.
@@ -125,14 +159,14 @@ there is no login, no API key, no role-based access control.
 **Impact:** Acceptable for demo. Production would add MoSPI SSO or OAuth2,
 with separate analyst and admin roles.
 
-### 12. No HTTPS
+### 15. No HTTPS
 
 The development server runs on HTTP. No TLS certificates are configured.
 
 **Impact:** Demo-only. Production would terminate TLS at a reverse proxy
 (nginx or cloud load balancer).
 
-### 13. Process-local live-fetch status
+### 16. Process-local live-fetch status
 
 The most recent live-fetch execution summary is held in backend process memory.
 Stored observations and their provenance remain in SQLite, but the fetch summary
@@ -140,6 +174,17 @@ is cleared when the backend restarts.
 
 **Impact:** This does not affect the offline demo path. Production would persist
 job status in the database or a queue-backed job table.
+
+### 17. Evidence metadata is not an immutable audit log
+
+Overview and Fare Alert evidence includes a calculation ID, methodology version,
+dataset SHA-256, source batch IDs, observation count, parameters, and calculation
+time. This supports deterministic reproduction from the same stored data.
+
+**Impact:** There is no authenticated user identity, append-only event history,
+digital signature, or tamper-evident external ledger. The UI calls this an
+Evidence Trail but explicitly reports that scope; production regulatory audit
+requirements remain unmet.
 
 ---
 
@@ -149,8 +194,9 @@ job status in the database or a queue-backed job table.
 
 - A **methodology demonstration** — showing that the Laspeyres/Jevons approach
   works for airfares
-- A **working software system** — 24 API endpoints, 10 frontend routes, 463 tests plus 33 subtests
-- A **statistical tool** — transparent, reproducible, auditable
+- A **working software system** — 26 API endpoints, 10 frontend routes, 468 tests plus 33 subtests
+- A **statistical prototype** — transparent and reproducible, with calculation
+  metadata but without an immutable audit log
 
 ### What this prototype is not
 

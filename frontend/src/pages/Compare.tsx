@@ -11,7 +11,7 @@ import {
 } from 'recharts'
 import { api, formatClass, formatINR, type CompareRow, type FilterOptions } from '../api'
 import { Card, Delta, EmptyState, ErrorNote, Field, JudgePanel, Select, Spinner } from '../components/ui'
-import { axisProps, gridProps, tooltipProps } from '../components/chart'
+import { axisProps, chartNumber, gridProps, tooltipProps } from '../components/chart'
 import { useJudgeMode } from '../context/judgeModeContext'
 
 export default function Compare() {
@@ -164,7 +164,7 @@ export default function Compare() {
                   tickFormatter={(v: number) => `₹${(v / 1000).toFixed(0)}k`}
                 />
                 <YAxis type="category" dataKey="group" {...axisProps} width={78} />
-                <Tooltip {...tooltipProps} formatter={(v: any) => [formatINR(Number(v)), 'Avg fare']} />
+                <Tooltip {...tooltipProps} formatter={(value: unknown) => [formatINR(chartNumber(value)), 'Avg fare']} />
                 <Bar dataKey="avg_fare" radius={[0, 3, 3, 0]} barSize={18}>
                   {rows.map((r) => (
                     <Cell key={r.group} fill={(r.delta ?? 0) > 0 ? '#c2410c' : '#0b6e6e'} />

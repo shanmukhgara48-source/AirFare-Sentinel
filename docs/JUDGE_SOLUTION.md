@@ -43,7 +43,7 @@ naturally.
 
 ### 3. Prototype traffic weights (Laspeyres aggregation)
 
-Cells are combined into a national headline using **fixed illustrative traffic
+Cells are combined into a prototype basket using **fixed illustrative traffic
 weights**. The Delhi-Mumbai corridor carries 14% of the prototype basket. These
 are modelling assumptions, not current official DGCA route shares; production
 publication requires calibration with current traffic data.
@@ -54,13 +54,14 @@ routes with broader carrier coverage do not gain extra influence.
 APIx[t] = 100 × Σ (Weight[cell] × Price Relative[cell])
 ```
 
-The index reads 100 at the start. Above 100 = fares have risen. Below 100 =
-fares have fallen.
+The indicator reads 100 at the start. Above 100 = matched basket fares have
+risen. Below 100 = they have fallen. A national label is not published under
+RED coverage.
 
 ### 4. Dual publication (weighted + unweighted)
 
 We publish **two lines** on every chart:
-- **Weighted Laspeyres** (headline) — reflects the prototype traffic-weight assumptions
+- **Weighted Laspeyres** (publication-gated indicator) — reflects the prototype traffic-weight assumptions
 - **Unweighted Jevons** (sensitivity) — treats every cell equally
 
 When they diverge, it tells us whether price movements are concentrated on
@@ -73,7 +74,7 @@ If a cell has no observation in a period, we **do not impute or carry
 forward**. We report the coverage gap and flag it:
 - **GREEN** (≥90% coverage) — reliable
 - **AMBER** (80-90%) — publish with advisory
-- **RED** (<80%) — caution
+- **RED** (<80%) — suppress the national headline; show only an Experimental Basket Indicator with the reason
 
 ---
 
@@ -109,7 +110,7 @@ forward**. We report the coverage gap and flag it:
 - Professional design system (IBM Plex fonts, teal/grey palette)
 
 ### Quality assurance
-- **463 automated tests plus 33 subtests** across 14 focused test modules
+- **468 automated tests plus 33 subtests** across 14 focused test modules
 - 5 statistical properties verified: identity, proportionality,
   commensurability, permutation invariance, weight conservation
 - Full integration test: generate → validate → index → spikes → contributions
@@ -127,7 +128,7 @@ forward**. We report the coverage gap and flag it:
 | Missing data | Carry forward or impute | Never — report gap honestly |
 | Anomaly detection | Mean + stddev | Median + MAD (outlier-resistant) |
 | Price anatomy | Lump sum | 4 components (base, surcharge, taxes, airport) |
-| Transparency | Black box | Reproducible by hand; 463 tests plus 33 subtests verify |
+| Transparency | Black box | Reproducible by hand; 468 tests plus 33 subtests verify |
 
 ---
 
@@ -135,7 +136,7 @@ forward**. We report the coverage gap and flag it:
 
 | PS Requirement | How we address it |
 |----------------|-------------------|
-| Price index for domestic airfares | Weighted Laspeyres headline, base = 100 |
+| Price index for domestic airfares | Publication-gated weighted Laspeyres prototype, base = 100 |
 | T+1, T+7, T+15, T+30, T+45 anchors | 5 lead-time buckets covering all anchors |
 | Route-level analysis | 14 directional routes with independent indices |
 | Airline-level comparison | Per-carrier index + head-to-head comparison |

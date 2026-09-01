@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   api,
   formatINR,
+  type AnalysisSourceState,
   type Batch,
   type IngestResult,
   type LiveFetchResult,
@@ -140,19 +141,22 @@ export default function Admin() {
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [providerError, setProviderError] = useState('')
+  const [analysisState, setAnalysisState] = useState<AnalysisSourceState | null>(null)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(
     async (targetPage: number) => {
       try {
-        const [b, o] = await Promise.all([
+        const [b, o, analysis] = await Promise.all([
           api.batches(),
           api.observations(PAGE_SIZE, targetPage * PAGE_SIZE),
+          api.analysisSource(),
         ])
         setBatches(b.batches)
         setRows(o.rows)
         setTotal(o.total)
+        setAnalysisState(analysis)
         setError('')
       } catch (e) {
         setError((e as Error).message)
@@ -166,12 +170,14 @@ export default function Admin() {
     Promise.all([
       api.batches(),
       api.observations(PAGE_SIZE, page * PAGE_SIZE),
+      api.analysisSource(),
     ])
-      .then(([b, o]) => {
+      .then(([b, o, analysis]) => {
         if (cancelled) return
         setBatches(b.batches)
         setRows(o.rows)
         setTotal(o.total)
+        setAnalysisState(analysis)
         setError('')
       })
       .catch((e: Error) => {
@@ -202,6 +208,7 @@ export default function Admin() {
       setResult('accepted_count' in res ? res : null)
       if (page === 0) await refresh(0)
       else setPage(0)
+      window.dispatchEvent(new Event('farepulse-data-changed'))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -215,6 +222,19 @@ export default function Admin() {
   }
 
   const maxPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1)
+
+  async function switchAnalysisSource(sourceType: 'demo' | 'imported' | 'live') {
+    setBusy('source')
+    setError('')
+    try {
+      setAnalysisState(await api.selectAnalysisSource(sourceType))
+      window.dispatchEvent(new Event('farepulse-data-changed'))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy('')
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -255,6 +275,30 @@ export default function Admin() {
 
       {error && <ErrorNote message={error} />}
       {providerError && <ErrorNote message={providerError} />}
+
+      {analysisState && (
+        <Card
+          title="Active analysis dataset"
+          subtitle="Stored sources may coexist, but analytical endpoints use exactly one provenance cohort"
+          action={<Pill tone={analysisState.active_analysis_source === 'live' ? 'ok' : analysisState.active_analysis_source === 'demo' ? 'warn' : 'neutral'}>{analysisState.dataset_label}</Pill>}
+        >
+          <p className="text-[12.5px] leading-relaxed text-muted">
+            {analysisState.source_isolation_notice} Stored state: {analysisState.stored_dataset.dataset_label}.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2" data-testid="analysis-source-selector">
+            {analysisState.available_analysis_sources.map((source) => (
+              <Button
+                key={source}
+                variant={analysisState.active_analysis_source === source ? 'primary' : 'secondary'}
+                disabled={busy !== '' || analysisState.active_analysis_source === source}
+                onClick={() => switchAnalysisSource(source)}
+              >
+                Analyse {source}
+              </Button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Load sample dataset" subtitle="Resets the database, then loads the bundled demo file">
@@ -336,6 +380,7 @@ export default function Admin() {
             setLiveStatus(await api.liveFetchStatus())
             if (page === 0) await refresh(0)
             else setPage(0)
+            window.dispatchEvent(new Event('farepulse-data-changed'))
           } catch (e) {
             setError((e as Error).message)
           } finally {

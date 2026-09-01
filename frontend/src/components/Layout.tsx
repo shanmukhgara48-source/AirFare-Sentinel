@@ -30,11 +30,11 @@ const ICONS: Record<string, ReactNode> = {
 
 // ─── Nav data ──────────────────────────────────────────────────────────────────
 const NAV_MAIN = [
-  { to: '/', end: true,  label: 'Overview',          desc: 'National index · command view',   icon: 'overview' },
+  { to: '/', end: true,  label: 'Overview',          desc: 'Publication-gated basket view',    icon: 'overview' },
   { to: '/spikes',       label: 'Fare Alerts',        desc: 'Analyst queue · case files',      icon: 'alert'    },
-  { to: '/competition',  label: 'Competition',         desc: 'HHI concentration risk',          icon: 'bar'      },
+  { to: '/competition',  label: 'Competition',         desc: 'Observation-share proxy',         icon: 'bar'      },
   { to: '/vulnerability',label: 'Vulnerability',       desc: 'Lead-time fare pressure',         icon: 'shield'   },
-  { to: '/fairness',     label: 'Fairness Lens',       desc: 'Fare equity by category',         icon: 'scale'    },
+  { to: '/fairness',     label: 'Fairness Lens',       desc: 'Category index comparison',       icon: 'scale'    },
   { to: '/whatif',       label: 'What-If Simulator',   desc: 'Scenario planning tool',          icon: 'sliders'  },
 ] as const
 
@@ -102,18 +102,25 @@ export default function Layout() {
 
   useEffect(() => {
     let cancelled = false
-    api.version()
-      .then((version) => {
-        if (cancelled) return
-        setSystem(version)
-        setSystemStatus('ready')
-      })
-      .catch(() => {
-        if (cancelled) return
-        setSystem(null)
-        setSystemStatus('error')
-      })
-    return () => { cancelled = true }
+    const refreshSystem = () => {
+      api.version()
+        .then((version) => {
+          if (cancelled) return
+          setSystem(version)
+          setSystemStatus('ready')
+        })
+        .catch(() => {
+          if (cancelled) return
+          setSystem(null)
+          setSystemStatus('error')
+        })
+    }
+    refreshSystem()
+    window.addEventListener('farepulse-data-changed', refreshSystem)
+    return () => {
+      cancelled = true
+      window.removeEventListener('farepulse-data-changed', refreshSystem)
+    }
   }, [])
 
   const allNavFlat: readonly NavEntry[] = [...NAV_MAIN, ...NAV_VIEWS, ...NAV_SYS]
@@ -307,7 +314,7 @@ export default function Layout() {
             className="mx-auto w-full max-w-[1280px] px-5 pb-6 text-[11px] leading-relaxed lg:px-8"
             style={{ color: '#8ca0b5' }}
           >
-            FarePulse Command Center · SIH 2026 PS 26056 · {datasetNotice} Index methodology v0.2.
+            FarePulse Command Center · SIH 2026 PS 26056 · {datasetNotice} Prototype methodology v0.3.
           </footer>
         </div>
       </div>

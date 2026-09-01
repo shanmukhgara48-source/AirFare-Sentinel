@@ -21,7 +21,7 @@ Formula
     competition_adjustment(n) = COMPETITION_SCALE × ln(BASELINE_CARRIERS / max(1, n))
 
     projected_apix  = baseline_apix × (1 + projected_change_pct / 100)
-    impact_score    = min(100, |projected_change_pct| × 3)
+    exposure_proxy  = min(100, |projected_change_pct| × 3)
 
 Coefficients
 ------------
@@ -62,9 +62,35 @@ CAPACITY_ELASTICITY = -0.50
 COMPETITION_SCALE   = 15.0
 BASELINE_CARRIERS   = 4
 
-# ── Impact score multiplier ───────────────────────────────────────────────────
-# 3× means a ±33.3 % index change saturates the 0–100 impact scale.
+# ── Exposure-proxy multiplier ─────────────────────────────────────────────────
+# 3× is a team-defined scenario display scale. It is not passenger impact.
 IMPACT_MULTIPLIER = 3.0
+
+MODEL_METADATA = {
+    "model_status": "UNCALIBRATED_ILLUSTRATIVE_SCENARIO",
+    "coefficient_basis": (
+        "Team-defined sensitivity assumptions for demonstration; not empirical "
+        "estimates and not calibrated to Indian airfare outcomes."
+    ),
+    "citation_status": (
+        "No external study is claimed as the source of these exact coefficients."
+    ),
+    "valid_use": "Directional what-if exploration only; not forecasting or policy impact estimation.",
+    "invalid_uses": [
+        "Predicting future fares",
+        "Estimating passenger harm",
+        "Attributing causality",
+        "Supporting enforcement decisions",
+    ],
+    "coefficients": {
+        "demand_elasticity": DEMAND_ELASTICITY,
+        "fuel_passthrough": FUEL_PASSTHROUGH,
+        "capacity_elasticity": CAPACITY_ELASTICITY,
+        "competition_scale": COMPETITION_SCALE,
+        "baseline_carriers": BASELINE_CARRIERS,
+        "exposure_proxy_multiplier": IMPACT_MULTIPLIER,
+    },
+}
 
 # ── Risk thresholds (inclusive lower bound, exclusive upper) ──────────────────
 _RISK_BANDS = [(5.0, "Low"), (15.0, "Watch"), (30.0, "Review")]
@@ -130,7 +156,7 @@ def project(
         competition_contribution float  (percentage points)
         projected_change_pct     float  (sum of all contributions)
         projected_apix           float  (baseline × (1 + change/100))
-        impact_score             float  (0–100)
+        exposure_proxy           float  (0–100 illustrative magnitude scale)
         risk_level               str    ("Low" | "Watch" | "Review" | "Escalate")
         explanation              str    (plain-English summary)
     """
@@ -143,7 +169,7 @@ def project(
         demand_contrib + fuel_contrib + capacity_contrib + competition_contrib, 2
     )
     projected_apix = round(baseline_apix * (1 + projected_change / 100), 2)
-    impact_score   = round(min(100.0, max(0.0, abs(projected_change) * IMPACT_MULTIPLIER)), 1)
+    exposure_proxy = round(min(100.0, max(0.0, abs(projected_change) * IMPACT_MULTIPLIER)), 1)
     risk           = risk_level(abs(projected_change))
 
     explanation = _build_explanation(
@@ -159,9 +185,11 @@ def project(
         "competition_contribution": competition_contrib,
         "projected_change_pct":     projected_change,
         "projected_apix":           projected_apix,
-        "impact_score":             impact_score,
+        "exposure_proxy":           exposure_proxy,
+        "impact_score":             exposure_proxy,  # deprecated API alias
         "risk_level":               risk,
         "explanation":              explanation,
+        "model_metadata":           MODEL_METADATA,
     }
 
 
@@ -191,8 +219,8 @@ def _build_explanation(
         direction = "increases" if demand_pct > 0 else "decreases"
         effect = "adding" if demand_contrib > 0 else "subtracting"
         parts.append(
-            f"Passenger demand {direction} by {abs(demand_pct):.0f}%, "
-            f"{effect} {abs(demand_contrib):.1f} percentage points to the index."
+            f"Under the 0.60 demand assumption, passenger demand {direction} by "
+            f"{abs(demand_pct):.0f}%, {effect} {abs(demand_contrib):.1f} formula points."
         )
 
     # Fuel
@@ -200,8 +228,8 @@ def _build_explanation(
         direction = "rise" if fuel_pct > 0 else "fall"
         effect = "adding" if fuel_contrib > 0 else "reducing"
         parts.append(
-            f"Fuel costs {direction} by {abs(fuel_pct):.0f}%, "
-            f"{effect} {abs(fuel_contrib):.1f} points via cost pass-through."
+            f"Under the 0.35 pass-through assumption, fuel costs {direction} by "
+            f"{abs(fuel_pct):.0f}%, {effect} {abs(fuel_contrib):.1f} formula points."
         )
 
     # Capacity
@@ -210,8 +238,8 @@ def _build_explanation(
         effect = "relieving" if capacity_contrib < 0 else "adding"
         pts = abs(capacity_contrib)
         parts.append(
-            f"Seat capacity {direction} by {abs(capacity_pct):.0f}%, "
-            f"{effect} {pts:.1f} points of fare pressure."
+            f"Under the −0.50 capacity assumption, seat capacity {direction} by "
+            f"{abs(capacity_pct):.0f}%, {effect} {pts:.1f} formula points."
         )
 
     # Competition
@@ -219,12 +247,12 @@ def _build_explanation(
     if c < BASELINE_CARRIERS:
         parts.append(
             f"With {c} active carrier{'s' if c > 1 else ''} (below the {BASELINE_CARRIERS}-carrier "
-            f"baseline), reduced competition adds {abs(competition_contrib):.1f} points."
+            f"baseline), the prototype formula adds {abs(competition_contrib):.1f} points."
         )
     elif c > BASELINE_CARRIERS:
         parts.append(
             f"With {c} active carriers (above the {BASELINE_CARRIERS}-carrier baseline), "
-            f"stronger competition reduces pressure by {abs(competition_contrib):.1f} points."
+            f"the prototype formula subtracts {abs(competition_contrib):.1f} points."
         )
 
     # Summary
@@ -237,7 +265,7 @@ def _build_explanation(
     else:
         summary = (
             f"Net projected index change: {_signed(projected_change, ' pp')}. "
-            f"This {direction_word} triggers a {risk} alert."
+            f"This {direction_word} falls in the team-defined {risk} magnitude band."
         )
     parts.append(summary)
 

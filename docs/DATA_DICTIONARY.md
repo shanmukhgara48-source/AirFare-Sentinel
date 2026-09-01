@@ -170,6 +170,22 @@ The sample dataset yields 14 routes × 4 carriers × 4 classes × 5 buckets = **
 | `effective_from` | TEXT | ISO date, start of weight validity. |
 | `effective_to` | TEXT | ISO date, end of weight validity (NULL = open). |
 
+`init_db()` seeds these 14 rows from the versioned prototype constants in
+`app/model.py` (`source=prototype-model-v1`). The engine constants remain the
+calculation source in this prototype; the table exposes matching metadata for
+inspection rather than a second independently editable weighting scheme.
+
+### Table: `analysis_state`
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER | Singleton primary key, constrained to `1`. |
+| `active_source_type` | TEXT | The only provenance cohort used by analysis: `demo`, `imported`, or `live`. |
+| `updated_at` | TEXT | Time the active source selection changed. |
+
+Stored source types can coexist, but analytical queries add this source filter
+by default. This prevents silent hybrid demo/imported/live time series.
+
 ### Route basket (prototype)
 
 | Stratum | Routes | Weight each | Subtotal |
@@ -218,7 +234,7 @@ Applied in order, at ingest, in `app/model.py` and `app/ingestion/validate.py`.
 | Total fare | `total_fare = base_fare + airline_surcharge + statutory_taxes + airport_charges`. |
 | Lead time | `lead_days = travel_date − quote_date`; `lead_bucket` derived from it. |
 | Plausibility | `total_fare` must be within ₹500 – ₹500,000. Outside that is almost always a units error, not a price. |
-| Reconciliation | If the source supplies its own `total_fare`, it must match the components to within ₹1. |
+| Reconciliation | If the source supplies its own `total_fare`, it must match the components to within ₹2. |
 
 ### Rejection reasons
 

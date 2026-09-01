@@ -374,7 +374,7 @@ export default function Methodology() {
               <tbody>
                 {[
                   {
-                    metric: 'Headline index (APIx)',
+                    metric: 'Publication-gated basket indicator',
                     source: 'observations table',
                     formula: 'APIx[t] = 100 × Σ (W[cell]/ΣW) × R[cell,t]',
                     test: 'test_index.py — weighted aggregation',
@@ -392,10 +392,10 @@ export default function Methodology() {
                     test: 'test_anomaly.py — extreme fare detection',
                   },
                   {
-                    metric: 'Passenger Impact Score',
+                    metric: 'Passenger Exposure Proxy',
                     source: 'spike result + route basket',
                     formula: 'route_weight% × (dev/25) × urgency × severity × confidence',
-                    test: 'test_anomaly.py — impact score range',
+                    test: 'test_anomaly.py — proxy range and monotonicity',
                   },
                   {
                     metric: 'Panel coverage %',
@@ -404,7 +404,7 @@ export default function Methodology() {
                     test: 'test_index.py — coverage report',
                   },
                   {
-                    metric: 'Route competition (HHI)',
+                    metric: 'Route competition observation-share proxy',
                     source: 'observations table',
                     formula: 'HHI = Σ (carrier_share²); status: Healthy <0.35, Watch 0.35–0.60, High Risk ≥0.60',
                     test: 'test_competition.py',
@@ -412,8 +412,14 @@ export default function Methodology() {
                   {
                     metric: 'Vulnerability score',
                     source: 'observations + spikes',
-                    formula: 'weighted(fare_cv/0.6, alert_rate/0.1, urgency_weight) × coverage_confidence',
+                    formula: 'weighted(within-cell robust log-residual volatility/0.20, alert_rate/0.1, urgency_weight) × coverage_confidence',
                     test: 'test_vulnerability.py',
+                  },
+                  {
+                    metric: 'Fairness Lens category signal',
+                    source: 'category-specific matched cells',
+                    formula: 'category index change − basket index change; ±2 pp prototype bands',
+                    test: 'test_fairness.py — like-for-like index comparison',
                   },
                 ].map((row) => (
                   <tr key={row.metric} className="border-b border-line/60 last:border-0">
@@ -436,7 +442,9 @@ export default function Methodology() {
             Open the Fare Alerts page, click any row, and expand the{' '}
             <strong className="font-medium text-ink">Evidence Trail</strong> section at the bottom
             of the Case File. It lists the observation ID, cell definition, formula applied,
-            detection threshold, and cell size used to compute that specific alert. The same
+            detection threshold, cell size, calculation ID, methodology version, dataset SHA-256,
+            and source batch used for that alert. This is reproducible calculation provenance,
+            not an immutable user/action audit log. The same
             data is available on the Overview page via the{' '}
             <em>Evidence Trail</em> button below the stat cards.
           </div>
@@ -446,15 +454,16 @@ export default function Methodology() {
       <Card title="Data sourcing" subtitle="How real feeds would be added">
         <div className="space-y-3 text-[13px] leading-relaxed text-muted">
           <p>
-            This MVP reads fare observations from CSV only. No website is scraped and no access
-            control is circumvented — the bundled dataset is generated locally by a script in the
-            repository.
+            This MVP reads the bundled/generated CSV, validated CSV imports, and credential-gated
+            provider quote snapshots. No website is scraped and no access control is circumvented.
+            Provider support is operationally unverified until credentials are configured and a
+            successful fetch stores rows with live provenance.
           </p>
           <p>
             Ingestion sits behind one seam: everything downstream consumes validated observation
-            rows, never a file. Adding a licensed airline, NDC or GDS feed later means writing one
-            adapter that emits the same row shape. The index engine, the alert rules and every
-            screen in this app would need no changes.
+            rows, never a file. Each analysis uses one explicit provenance cohort (demo, imported,
+            or live), so those sources cannot silently form a hybrid time series. A licensed airline,
+            NDC, or GDS adapter must emit the same validated row shape.
           </p>
         </div>
       </Card>

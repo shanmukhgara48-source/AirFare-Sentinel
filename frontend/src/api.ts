@@ -33,6 +33,20 @@ export interface Coverage {
   quality_flag: 'GREEN' | 'AMBER' | 'RED'
 }
 
+export interface AuditMetadata {
+  calculation_id: string
+  calculation_version: string
+  computed_at: string
+  dataset_fingerprint_sha256: string
+  observation_count: number
+  source_types: string[]
+  source_batch_ids: string[]
+  quote_date_start: string | null
+  quote_date_end: string | null
+  parameters: Record<string, string | number | boolean>
+  audit_scope: string
+}
+
 export interface LeadBucket {
   code: string
   label: string
@@ -49,11 +63,16 @@ export interface OverviewEvidence {
   alert_min_deviation_pct: number
   cell_definition: string
   weight_source: string
+  audit: AuditMetadata
 }
 
 export interface Overview {
   empty: boolean
   message?: string
+  indicator_name: string
+  publication_status: 'SUPPRESSED' | 'PROVISIONAL' | 'PUBLISHABLE_PROTOTYPE'
+  headline_publishable: boolean
+  suppression_reason: string | null
   headline_index: number | null
   change_pct: number | null
   period_start: string | null
@@ -111,6 +130,8 @@ export interface Spike {
   explanation: string
   recommended_action: string
   impact_score: number
+  exposure_proxy: number
+  source_batch_id: string | null
   source_type: 'demo' | 'imported' | 'live'
   provider: string | null
   source_label: string
@@ -126,11 +147,11 @@ export interface Spike {
 }
 
 export const REASON_GLOSSARY: Record<string, string> = {
-  LEAD_TIME_SURGE: 'Last-minute booking (0–3 days) where short lead time is the dominant price driver.',
-  FESTIVAL_PATTERN: 'Travel date falls in a known festive/holiday window that produces predictable fare surges.',
-  CARRIER_SPECIFIC_SPIKE: 'The anomaly is isolated to one carrier while others on the same route are normal.',
-  LOW_COMPETITION_ROUTE: 'Route has ≤ 2 active carriers, limiting competitive pressure on fares.',
-  ROUTE_LEVEL_SPIKE: 'Multiple carriers on this route show elevated fares in the same period.',
+  LEAD_TIME_SURGE: 'Flagged observation is in the 0–3 day booking bucket; this is context, not a causal finding.',
+  FESTIVAL_PATTERN: 'Travel date overlaps an approximate recurring demo event window; route relevance and causality are unverified.',
+  CARRIER_SPECIFIC_SPIKE: 'Only one carrier on the route has a flag in the analysed dataset; same-period normality is not inferred.',
+  LOW_COMPETITION_ROUTE: 'The analysed dataset contains ≤ 2 carriers on the route; collection coverage may affect this proxy.',
+  ROUTE_LEVEL_SPIKE: 'More than one carrier on the route has a flag somewhere in the analysed dataset; simultaneity is not inferred.',
   FARE_DROP_OUTLIER: 'Fare is significantly below its cell median — possible promotional pricing or data error.',
   LOW_COVERAGE_WARNING: 'Cell has fewer than 15 observations; the statistical baseline may be unreliable.',
 }
@@ -177,6 +198,7 @@ export interface FilterOptions {
   fare_classes: string[]
   lead_buckets: LeadBucket[]
   source_types: string[]
+  active_source_type: 'demo' | 'imported' | 'live' | null
   travel_date_min: string | null
   travel_date_max: string | null
 }
@@ -219,16 +241,27 @@ export interface LiveFetchStatus {
   api_errors?: number
 }
 
-export interface SystemVersion {
+export interface AnalysisSourceState {
+  dataset_mode: 'empty' | 'demo' | 'live' | 'imported' | 'hybrid'
+  dataset_label: string
+  dataset_notice: string
+  active_analysis_source: 'demo' | 'imported' | 'live' | null
+  available_analysis_sources: ('demo' | 'imported' | 'live')[]
+  source_isolation_notice: string
+  stored_dataset: {
+    dataset_mode: 'empty' | 'demo' | 'live' | 'imported' | 'hybrid'
+    dataset_label: string
+    dataset_notice: string
+  }
+}
+
+export interface SystemVersion extends AnalysisSourceState {
   version: string
   project: string
   demo_mode: boolean
   operating_mode: 'demo' | 'live' | 'demo_fallback'
   mode_label: string
   mode_notice: string
-  dataset_mode: 'empty' | 'demo' | 'live' | 'imported' | 'hybrid'
-  dataset_label: string
-  dataset_notice: string
   live_provider_configured: boolean
   configured_live_provider: string | null
 }
@@ -241,8 +274,17 @@ export interface WhatIfProjection {
   projected_change_pct: number
   projected_apix: number
   impact_score: number
+  exposure_proxy: number
   risk_level: 'Low' | 'Watch' | 'Review' | 'Escalate'
   explanation: string
+  model_metadata: {
+    model_status: string
+    coefficient_basis: string
+    citation_status: string
+    valid_use: string
+    invalid_uses: string[]
+    coefficients: Record<string, number>
+  }
 }
 
 export interface IngestResult {
@@ -343,6 +385,7 @@ export const api = {
         min_cell_observations: number
         reason_codes: number
         confidence_bands: string
+        audit: AuditMetadata
       }
     }>(`/api/spikes${qs({ threshold })}`),
   events: () =>
@@ -362,6 +405,9 @@ export const api = {
   liveFetch: (quick: boolean) =>
     request<LiveFetchResult>(`/api/admin/live-fetch${qs({ quick: String(quick) })}`, { method: 'POST' }),
   liveFetchStatus: () => request<LiveFetchStatus>('/api/admin/live-fetch/status'),
+  analysisSource: () => request<AnalysisSourceState>('/api/admin/analysis-source'),
+  selectAnalysisSource: (sourceType: 'demo' | 'imported' | 'live') =>
+    request<AnalysisSourceState>(`/api/admin/analysis-source${qs({ source_type: sourceType })}`, { method: 'POST' }),
   providerStatus: () =>
     request<{
       providers: { provider: string; configured: boolean; requires_credentials: boolean; message: string; setup_instructions?: string[] }[]
@@ -396,6 +442,9 @@ export interface VulnerabilityBucket {
   avg_fare: number
   median_fare: number
   fare_cv: number
+  within_cell_count: number
+  robust_log_sigma: number
+  within_cell_relative_volatility: number
   alert_count: number
   alert_rate: number
   urgency_weight: number
@@ -466,6 +515,14 @@ export interface FairnessCategoryRow {
   alert_count: number
   alert_rate: number | null
   avg_impact_score: number | null
+  avg_exposure_proxy: number | null
+  index_value: number | null
+  index_change_pct: number | null
+  relative_to_basket_pts: number | null
+  index_period_start: string | null
+  index_period_end: string | null
+  index_quality_flag: 'GREEN' | 'AMBER' | 'RED' | null
+  pressure_method?: string
   fare_pressure: FairnessPressure | null
   routes: string[]
 }

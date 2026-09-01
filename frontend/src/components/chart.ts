@@ -28,5 +28,13 @@ export const tooltipProps = {
   cursor: { fill: 'rgba(11,110,110,0.04)' },
 } as const
 
+export const chartNumber = (value: unknown) => {
+  const rawValue = Array.isArray(value) ? value[0] : value
+  const numericValue = Number(rawValue)
+  return Number.isFinite(numericValue) ? numericValue : 0
+}
+
+export const chartLabel = (value: unknown) => String(value)
+
 // Aviation-analytics palette: petrol, amber, navy, teal, green, red
 export const SERIES_COLORS = ['#0b6e6e', '#b45309', '#1e40af', '#0891b2', '#15803d', '#c2410c']

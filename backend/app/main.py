@@ -16,8 +16,15 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import sqlite3
 
 from app.api.queries import fetch_data_source_types, fetch_filter_options, fetch_observations
+from app.audit import calculation_audit
 from app.config import settings
-from app.db.database import db_session, init_db, reset_db
+from app.db.database import (
+    db_session,
+    get_active_source_type,
+    init_db,
+    reset_db,
+    set_active_source_type,
+)
 from app.engine.anomaly import detect_spikes
 from app.engine.competition import compute_route_competition
 from app.engine.events import DEMO_NOTICE, get_all_events, tag_spikes_with_events
@@ -52,14 +59,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
-    title="APIx — India Airfare Price Index",
+    title="FarePulse India — Airfare Basket Monitoring Prototype",
     description=(
-        "SIH 26056 — Transparent weighted Laspeyres airfare price index with "
-        "anomaly detection, competition monitoring, and scenario analysis. "
+        "SIH 26056 — Transparent weighted Laspeyres airfare basket monitoring "
+        "with publication coverage gates, anomaly detection, competition "
+        "proxies, and uncalibrated scenario analysis. "
         "All bundled data is synthetic (seed=26056). "
         "API documentation: see /docs (Swagger) or /redoc."
     ),
-    version="0.2.0",
+    version="0.3.0",
     openapi_tags=[
         {"name": "dashboard", "description": "Core index and monitoring endpoints"},
         {"name": "data",      "description": "Data import, export, and administration"},
@@ -68,8 +76,9 @@ app = FastAPI(
     ],
 )
 
-# TODO: add auth — production would sit behind MoSPI SSO. Development CORS is
-# restricted to configured origins, but CORS is not an authorization boundary.
+# Production auth boundary: deployment should sit behind MoSPI SSO or an
+# equivalent identity proxy. Development CORS is restricted to configured
+# origins, but CORS is not an authorization boundary.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -189,6 +198,22 @@ def _dataset_summary(source_types: list[str]) -> dict:
     return {"dataset_mode": source, "dataset_label": label, "dataset_notice": notice}
 
 
+def _analysis_dataset_summary() -> dict:
+    """Describe the isolated provenance cohort used by analysis endpoints."""
+    active = get_active_source_type()
+    available = fetch_data_source_types()
+    return {
+        **_dataset_summary([active] if active else []),
+        "active_analysis_source": active,
+        "available_analysis_sources": available,
+        "source_isolation_notice": (
+            "Analytical endpoints use only the active provenance source; "
+            "stored demo, imported, and live rows are never combined implicitly."
+        ),
+        "stored_dataset": _dataset_summary(available),
+    }
+
+
 def _observation_source_label(observations: list[dict]) -> str:
     return _dataset_summary([o.get("source_type", "imported") for o in observations])["dataset_label"]
 
@@ -295,12 +320,12 @@ def version() -> dict:
     """
     provider = get_configured_live_provider()
     return {
-        "version": "0.2.0",
-        "project": "SIH 26056 — APIx India Airfare Price Index",
+        "version": "0.3.0",
+        "project": "SIH 26056 — FarePulse India Airfare Basket Monitoring Prototype",
         "ministry": "Ministry of Statistics and Programme Implementation (MoSPI)",
         "demo_mode": settings.demo_mode,
         **_operating_mode(),
-        **_dataset_summary(fetch_data_source_types()),
+        **_analysis_dataset_summary(),
         "live_provider_configured": provider is not None,
         "configured_live_provider": provider.name if provider else None,
         "methodology": {
@@ -357,6 +382,28 @@ def filters() -> dict:
     return fetch_filter_options()
 
 
+@app.get("/api/admin/analysis-source", tags=["data"])
+def analysis_source() -> dict:
+    """Return the isolated provenance cohort currently used for analysis."""
+    return _analysis_dataset_summary()
+
+
+@app.post("/api/admin/analysis-source", tags=["data"])
+def select_analysis_source(
+    source_type: str = Query(..., pattern="^(demo|imported|live)$"),
+) -> dict:
+    """Switch analysis to one stored provenance cohort without merging sources."""
+    available = fetch_data_source_types()
+    if source_type not in available:
+        raise HTTPException(
+            409,
+            f"No stored {source_type} observations are available. Available sources: "
+            f"{', '.join(available) if available else 'none'}.",
+        )
+    set_active_source_type(source_type)
+    return _analysis_dataset_summary()
+
+
 @app.get("/api/overview", tags=["dashboard"])
 def overview(granularity: str = Query("day", pattern="^(day|week)$")) -> dict:
     observations = fetch_observations()
@@ -370,6 +417,25 @@ def overview(granularity: str = Query("day", pattern="^(day|week)$")) -> dict:
     spikes = detect_spikes(observations)
     fares = [o["total_fare"] for o in observations]
     coverage = coverage_report(observations)
+    publication_quality = coverage["quality_flag"]
+    if publication_quality == "RED":
+        indicator_name = "Experimental Basket Indicator"
+        publication_status = "SUPPRESSED"
+        suppression_reason = (
+            f"National headline suppressed: mean matched weight coverage is "
+            f"{coverage['mean_weight_coverage_pct']:.1f}%, below the 80% minimum. "
+            "The displayed value is experimental and must not be quoted as a national index."
+        )
+    elif publication_quality == "AMBER":
+        indicator_name = "Provisional Airfare Basket Indicator"
+        publication_status = "PROVISIONAL"
+        suppression_reason = (
+            "Coverage is 80–90%; publish only with a provisional quality warning."
+        )
+    else:
+        indicator_name = "Prototype Airfare Price Index"
+        publication_status = "PUBLISHABLE_PROTOTYPE"
+        suppression_reason = None
 
     latest = series[-1] if series else None
     first = series[0] if series else None
@@ -381,6 +447,10 @@ def overview(granularity: str = Query("day", pattern="^(day|week)$")) -> dict:
 
     return {
         "empty": False,
+        "indicator_name": indicator_name,
+        "publication_status": publication_status,
+        "headline_publishable": publication_status != "SUPPRESSED",
+        "suppression_reason": suppression_reason,
         "headline_index": latest["apix_value"] if latest else None,
         "change_pct": change_pct,
         "period_start": first["period"] if first else None,
@@ -407,6 +477,11 @@ def overview(granularity: str = Query("day", pattern="^(day|week)$")) -> dict:
             "alert_min_deviation_pct": 25.0,
             "cell_definition": "route \u00d7 airline \u00d7 fare class \u00d7 lead-time bucket",
             "weight_source": "Illustrative traffic-proportional prototype weights; current DGCA calibration required",
+            "audit": calculation_audit(
+                observations,
+                "overview-index",
+                {"granularity": granularity, "weighted": True},
+            ),
         },
     }
 
@@ -689,11 +764,11 @@ def whatif(
 @app.get("/api/fairness", tags=["dashboard"])
 def fairness() -> dict:
     """
-    Fairness Lens — fare pressure by route category.
+    Fairness Lens — like-for-like index movement by route category.
 
-    Aggregates average fare, alert rate, and passenger impact across five
-    policy categories plus an explicit Unclassified bucket, preventing unknown
-    imported/live routes from being silently assigned to Metro.
+    Compares each category's matched-cell index change with basket index change,
+    alongside alert rate and the passenger exposure proxy. Unknown imported/live
+    routes remain in an explicit Unclassified bucket.
 
     These are monitoring indicators for policy context, not findings of
     discrimination or wrongdoing.
@@ -735,6 +810,11 @@ def spikes(threshold: float = Query(3.5, ge=1.0, le=10.0)) -> dict:
             "min_cell_observations": 8,
             "reason_codes": 7,
             "confidence_bands": "Low (<15 obs), Medium (15\u201329 obs), High (\u226530 obs)",
+            "audit": calculation_audit(
+                observations,
+                "robust-spike-detection",
+                {"robust_z_threshold": threshold, "min_deviation_pct": 25.0},
+            ),
         },
     }
 
@@ -753,6 +833,8 @@ def load_sample() -> dict:
         accepted, batch_id, SAMPLE_CSV.name, quarantined, source_type="demo"
     )
     inserted_count = len(accepted) - (len(final_rejected) - len(quarantined))
+    if inserted_count > 0:
+        set_active_source_type("demo")
 
     return {
         "batch_id": batch_id,
@@ -799,6 +881,8 @@ async def upload(file: UploadFile = File(...)) -> dict:
         accepted, batch_id, file.filename, quarantined, source_type="imported"
     )
     inserted_count = len(accepted) - (len(final_rejected) - len(quarantined))
+    if inserted_count > 0:
+        set_active_source_type("imported")
 
     return {
         "batch_id": batch_id,
@@ -875,6 +959,8 @@ def live_fetch(quick: bool = Query(False)) -> dict:
     final_rejected = _insert_live_observations(accepted, batch_id, quarantined)
 
     inserted_count = len(accepted) - max(0, len(final_rejected) - len(quarantined))
+    if inserted_count > 0:
+        set_active_source_type("live")
     result = {
         "batch_id": batch_id,
         "provider": provider.name,

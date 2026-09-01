@@ -11,7 +11,6 @@ import {
 } from 'recharts'
 import {
   api,
-  formatINR,
   type FairnessCategoryRow,
   type FairnessData,
 } from '../api'
@@ -38,20 +37,6 @@ const PRESSURE_TONE: Record<string, 'ok' | 'warn' | 'alert' | 'neutral'> = {
 
 function pressureTone(p: string | null): 'ok' | 'warn' | 'alert' | 'neutral' {
   return p ? (PRESSURE_TONE[p] ?? 'neutral') : 'neutral'
-}
-
-// ─── Mini progress bar ────────────────────────────────────────────────────────
-
-function RateBar({ rate, color }: { rate: number; color: string }) {
-  const pct = Math.min(100, Math.round(rate * 100))
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-line">
-        <div style={{ width: `${pct}%`, background: color }} className="h-full rounded-full" />
-      </div>
-      <span className="tnum text-[11.5px] text-muted">{(rate * 100).toFixed(1)}%</span>
-    </div>
-  )
 }
 
 // ─── Category detail drawer ───────────────────────────────────────────────────
@@ -84,11 +69,11 @@ function CategoryDrawer({
               </h2>
               {row.fare_pressure && (
                 <Pill tone={pressureTone(row.fare_pressure)}>
-                  {row.fare_pressure} fare pressure
+                  {row.fare_pressure} relative index pressure
                 </Pill>
               )}
             </div>
-            <p className="mt-1 text-[12px] text-muted">Route category fare pressure signal</p>
+            <p className="mt-1 text-[12px] text-muted">Like-for-like category index signal</p>
           </div>
           <button
             onClick={onClose}
@@ -107,8 +92,9 @@ function CategoryDrawer({
             {[
               { label: 'Routes in category', value: String(row.route_count) },
               { label: 'Observations', value: row.observation_count.toLocaleString('en-IN') },
-              { label: 'Average fare', value: formatINR(row.avg_fare) },
-              { label: 'Median fare', value: formatINR(row.median_fare) },
+              { label: 'Category index', value: row.index_value?.toFixed(2) ?? '—' },
+              { label: 'Index change', value: row.index_change_pct != null ? `${row.index_change_pct >= 0 ? '+' : ''}${row.index_change_pct.toFixed(2)}%` : '—' },
+              { label: 'Vs basket', value: row.relative_to_basket_pts != null ? `${row.relative_to_basket_pts >= 0 ? '+' : ''}${row.relative_to_basket_pts.toFixed(2)} pp` : '—' },
               { label: 'Fare spikes', value: String(row.alert_count) },
               {
                 label: 'Alert rate',
@@ -155,24 +141,24 @@ function CategoryDrawer({
             </div>
           )}
 
-          {/* Avg impact score */}
-          {row.avg_impact_score != null && (
+          {/* Avg exposure proxy */}
+          {row.avg_exposure_proxy != null && (
             <div>
               <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted">
-                Average passenger impact score (spikes only)
+                Average passenger exposure proxy (spikes only)
               </div>
               <div className="flex items-center gap-3">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
                   <div
                     style={{
-                      width: `${Math.min(100, row.avg_impact_score)}%`,
+                      width: `${Math.min(100, row.avg_exposure_proxy)}%`,
                       background: color,
                     }}
                     className="h-full rounded-full"
                   />
                 </div>
                 <span className="tnum w-10 text-right font-mono text-[13px] font-semibold text-ink">
-                  {row.avg_impact_score.toFixed(1)}
+                  {row.avg_exposure_proxy.toFixed(1)}
                 </span>
               </div>
             </div>
@@ -181,8 +167,9 @@ function CategoryDrawer({
           {/* Disclaimer */}
           <div className="rounded-md border border-[#dbeafe] bg-[#eff6ff] px-4 py-3 text-[11.5px] leading-relaxed text-[#1e40af]">
             <strong>Monitoring signal only.</strong> Differences in fare pressure across route
-            categories may reflect legitimate demand and supply dynamics.  This view does not
-            imply discrimination or wrongdoing by any carrier.
+            categories compare like-for-like category index movement with basket index movement.
+            The ±2 point bands are prototype thresholds. This view does not measure fairness,
+            discrimination, passenger welfare, or wrongdoing by any carrier.
           </div>
         </div>
       </div>
@@ -197,8 +184,8 @@ export default function Fairness() {
   const [data, setData] = useState<FairnessData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<FairnessCategoryRow | null>(null)
-  const [chartMetric, setChartMetric] = useState<'avg_fare' | 'alert_rate' | 'avg_impact_score'>(
-    'avg_fare',
+  const [chartMetric, setChartMetric] = useState<'index_change_pct' | 'alert_rate' | 'avg_exposure_proxy'>(
+    'index_change_pct',
   )
 
   useEffect(() => {
@@ -243,9 +230,9 @@ export default function Fairness() {
 
   // Chart data — only categories with observations, sorted by metric
   const metricLabel: Record<typeof chartMetric, string> = {
-    avg_fare: 'Average fare (₹)',
+    index_change_pct: 'Category index change (%)',
     alert_rate: 'Alert rate (%)',
-    avg_impact_score: 'Avg impact score',
+    avg_exposure_proxy: 'Avg exposure proxy',
   }
   const chartData = cats
     .filter((c) => c.observation_count > 0)
@@ -254,9 +241,9 @@ export default function Fairness() {
       value:
         chartMetric === 'alert_rate'
           ? Number(((c.alert_rate ?? 0) * 100).toFixed(2))
-          : chartMetric === 'avg_fare'
-          ? c.avg_fare ?? 0
-          : c.avg_impact_score ?? 0,
+          : chartMetric === 'index_change_pct'
+          ? c.index_change_pct ?? 0
+          : c.avg_exposure_proxy ?? 0,
       category: c.category,
     }))
 
@@ -268,7 +255,7 @@ export default function Fairness() {
           Fairness Lens
         </h1>
         <p className="mt-1 text-[13px] text-muted">
-          Route category fare pressure — a public-interest monitoring view
+          Like-for-like route-category index comparison — not a finding of fairness or harm
         </p>
       </div>
 
@@ -282,15 +269,15 @@ export default function Fairness() {
             },
             {
               q: 'Why does it matter?',
-              a: 'Different traveller types bear different fare burdens. Connectivity-sensitive routes — where air is the only practical option — are most vulnerable to elevated fares. An elevated alert rate in those corridors warrants closer scrutiny than the same rate on competitive Metro routes.',
+              a: 'The lens compares movement in category-specific matched-cell indices, not raw price levels. A higher relative signal means a category index rose faster than the basket; it does not establish passenger burden or unfairness.',
             },
             {
               q: 'How confident are we?',
-              a: `Metrics are computed from the same ${observationTotal.toLocaleString()} observations that power the headline index. Tier-2 routes have no observations in this dataset. All figures are monitoring signals — not findings of unfair pricing.`,
+              a: `Metrics use ${observationTotal.toLocaleString()} observations and the same cell-relative index method as the basket. Category assignments and ±2 point pressure bands are illustrative. Tier-2 has no observations.`,
             },
             {
               q: 'What should an analyst do next?',
-              a: `Open any category row for a detailed breakdown. Focus on rows combining High fare pressure with a high alert rate — that combination most warrants investigation. Compare Connectivity-sensitive and Metro categories to assess whether less-competitive corridors are carrying disproportionate fare pressure.`,
+              a: `Open a category row and verify its index period, coverage flag, route membership, and alerts. Treat a High signal as a prioritisation cue for further data collection, not a fairness conclusion.`,
             },
           ]}
         />
@@ -322,9 +309,9 @@ export default function Fairness() {
           <span className="text-[11.5px] text-muted">Show:</span>
           {(
             [
-              ['avg_fare', 'Average fare'],
+              ['index_change_pct', 'Index change'],
               ['alert_rate', 'Alert rate'],
-              ['avg_impact_score', 'Avg impact score'],
+              ['avg_exposure_proxy', 'Avg exposure proxy'],
             ] as [typeof chartMetric, string][]
           ).map(([key, label]) => (
             <button
@@ -348,8 +335,8 @@ export default function Fairness() {
             <YAxis
               {...axisProps}
               tickFormatter={(v) =>
-                chartMetric === 'avg_fare'
-                  ? `₹${(v / 1000).toFixed(0)}k`
+                chartMetric === 'index_change_pct' || chartMetric === 'alert_rate'
+                  ? `${v}%`
                   : String(v)
               }
               width={52}
@@ -359,9 +346,7 @@ export default function Fairness() {
               formatter={(value) => {
                 const v = Number(value)
                 return [
-                  chartMetric === 'avg_fare'
-                    ? formatINR(v)
-                    : chartMetric === 'alert_rate'
+                  chartMetric === 'index_change_pct' || chartMetric === 'alert_rate'
                     ? `${v.toFixed(2)}%`
                     : v.toFixed(1),
                   metricLabel[chartMetric],
@@ -378,14 +363,14 @@ export default function Fairness() {
       </Card>
 
       {/* Category table */}
-      <Card title="Fare pressure by route category">
+      <Card title="Relative index pressure by route category" subtitle="High/Low compares category index change with basket index change using ±2 percentage-point prototype bands">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px] text-[12.5px]">
             <thead>
               <tr className="border-b border-line">
                 {[
-                  'Category', 'Routes', 'Observations', 'Avg fare',
-                  'Alert rate', 'Avg impact score', 'Fare pressure', '',
+                  'Category', 'Routes', 'Observations', 'Index change',
+                  'Vs basket', 'Avg exposure proxy', 'Relative pressure', '',
                 ].map((h) => (
                   <th
                     key={h}
@@ -422,16 +407,16 @@ export default function Fairness() {
                     <td className="px-3 py-2.5 tnum text-ink">
                       {row.observation_count.toLocaleString('en-IN')}
                     </td>
-                    <td className="px-3 py-2.5 tnum text-ink">{formatINR(row.avg_fare)}</td>
+                    <td className="px-3 py-2.5 tnum text-ink">
+                      {row.index_change_pct != null ? `${row.index_change_pct >= 0 ? '+' : ''}${row.index_change_pct.toFixed(2)}%` : '—'}
+                    </td>
                     <td className="px-3 py-2.5">
-                      {row.alert_rate != null ? (
-                        <RateBar rate={row.alert_rate} color={color} />
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
+                      {row.relative_to_basket_pts != null
+                        ? `${row.relative_to_basket_pts >= 0 ? '+' : ''}${row.relative_to_basket_pts.toFixed(2)} pp`
+                        : '—'}
                     </td>
                     <td className="px-3 py-2.5 tnum text-ink">
-                      {row.avg_impact_score != null ? row.avg_impact_score.toFixed(1) : '—'}
+                      {row.avg_exposure_proxy != null ? row.avg_exposure_proxy.toFixed(1) : '—'}
                     </td>
                     <td className="px-3 py-2.5">
                       {row.fare_pressure ? (
@@ -457,15 +442,13 @@ export default function Fairness() {
       <Card title="Why this matters for public policy">
         <div className="space-y-3 text-[13px] leading-relaxed text-ink">
           <p>
-            A national airfare index captures the aggregate price level — but aggregate figures
-            can obscure distributional effects.  If fare pressure is concentrated on
-            connectivity-sensitive routes, passengers who depend on air travel for essential
-            trips bear a disproportionate burden relative to leisure or corporate travellers on
-            trunk routes with abundant alternatives.
+            A basket indicator can obscure differences in how matched fare indices move across
+            route categories. This view makes those differences visible without comparing the raw
+            price level of inherently different products.
           </p>
           <p>
             The Fairness Lens is a first-pass monitoring signal.  It flags categories where
-            average fares, alert rates, or passenger impact scores deviate from the basket-wide
+            category index change, alert rates, or exposure proxies deviate from the basket-wide
             pattern, prompting deeper analyst investigation rather than automated conclusions.
           </p>
           <p>

@@ -210,7 +210,7 @@ export default function Competition() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="font-serif text-[26px] leading-tight">Competition Heatmap</h1>
+        <h1 className="font-serif text-[26px] leading-tight">Route Competition Monitor</h1>
         <p className="mt-1 text-[13px] text-muted">
           Concentration-risk monitoring signals by route — not legal findings of anti-competitive behaviour.
         </p>
@@ -231,11 +231,11 @@ export default function Competition() {
           },
           {
             q: 'Why does it matter?',
-            a: 'Routes with a single carrier, or where one carrier holds the majority of fare observations, face limited competitive price pressure. When those same routes also show elevated average fares (High fare pressure), the combination is the strongest signal in this dataset for an analyst to investigate. Note: this is a monitoring indicator — not a legal or regulatory finding.',
+            a: 'Routes with few observed carriers or an uneven share of collected quotes receive a higher proxy score. This can reflect collection coverage as well as market structure. It is a queueing signal for verification, not a competition finding.',
           },
           {
             q: 'How confident are we?',
-            a: `The Herfindahl-Hirschman Index (HHI) is computed from fare observation counts in the current dataset (${data?.data_source ?? 'source unavailable'}) — not from actual revenue, capacity, or passenger shares, which are unavailable. Treat concentration signals as directional proxies. A route with 2 carriers and low fares (Watch status, Low pressure) may not require action; a route with 1 carrier and High fare pressure warrants closer scrutiny.`,
+            a: `The HHI-like proxy is computed from fare observation counts in the current dataset (${data?.data_source ?? 'source unavailable'}) — not from revenue, seats, capacity, or passenger shares. It must be independently verified against authoritative market-share data before use as an HHI claim.`,
           },
           {
             q: 'What should an analyst do next?',
@@ -359,7 +359,7 @@ export default function Competition() {
         </div>
       )}
 
-      {/* Heatmap table */}
+      {/* Route monitoring table */}
       {loading ? (
         <Spinner />
       ) : !data || data.empty ? (
@@ -374,8 +374,8 @@ export default function Competition() {
         />
       ) : (
         <Card
-          title="Route competition heatmap"
-          subtitle="Click any row for a detailed breakdown — sorted by concentration risk"
+          title="Route competition table"
+          subtitle="Observation-share proxy — click any row for details; sorted by proxy risk"
         >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[800px] text-[12.5px] [&_th]:px-3 [&_td]:px-3 [&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">

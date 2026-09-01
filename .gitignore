@@ -2,14 +2,28 @@
 __pycache__/
 *.pyc
 .venv/
+venv/
 *.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Database
 apix.db
+*.sqlite
+*.sqlite3
 
 # Node
 node_modules/
 dist/
+build/
+coverage/
+
+# Environment and logs
+.env
+.env.*
+!.env.example
+*.log
 
 # OS
 .DS_Store

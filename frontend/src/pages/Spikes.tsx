@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { api, formatClass, formatINR, REASON_GLOSSARY, type EventClassification, type Spike } from '../api'
+import { api, formatClass, formatINR, REASON_GLOSSARY, type AuditMetadata, type EventClassification, type Spike } from '../api'
 import { Card, EmptyState, ErrorNote, Field, JudgePanel, Pill, Select, Spinner, StatTile, EvidenceTag } from '../components/ui'
 import { useJudgeMode } from '../context/judgeModeContext'
 
-function impactTone(score: number): 'escalate' | 'alert' | 'warn' | 'neutral' {
+function exposureTone(score: number): 'escalate' | 'alert' | 'warn' | 'neutral' {
   if (score >= 75) return 'escalate'
   if (score >= 50) return 'alert'
   if (score >= 25) return 'warn'
@@ -31,7 +31,17 @@ function eventClassShort(c: EventClassification): string {
 
 /* ─── Case File Modal ──────────────────────────────────────────────── */
 
-function CaseFileModal({ spike, onClose }: { spike: Spike; onClose: () => void }) {
+function CaseFileModal({
+  spike,
+  threshold,
+  audit,
+  onClose,
+}: {
+  spike: Spike
+  threshold: number
+  audit?: AuditMetadata
+  onClose: () => void
+}) {
   const sevTone = { Watch: 'warn', Review: 'alert', Escalate: 'escalate' } as const
   const confTone = { Low: 'alert', Medium: 'warn', High: 'ok' } as const
 
@@ -39,6 +49,7 @@ function CaseFileModal({ spike, onClose }: { spike: Spike; onClose: () => void }
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[8vh]">
       <div
         role="dialog"
+        data-testid="case-file-dialog"
         aria-modal="true"
         aria-labelledby="case-file-title"
         className="w-full max-w-[680px] rounded-lg border border-line bg-white shadow-xl"
@@ -191,8 +202,8 @@ function CaseFileModal({ spike, onClose }: { spike: Spike; onClose: () => void }
                 </div>
                 <p className="mt-1 text-[12px] leading-relaxed text-muted">
                   {spike.event_classification === 'Expected seasonal pressure'
-                    ? `This deviation (${spike.pct_above_median > 0 ? '+' : ''}${spike.pct_above_median.toFixed(1)}%) is within the range typically associated with ${spike.event_tag} (approx. ${spike.event_typical_surge_pct}% uplift). The fare movement is associated with the event window and may not require further investigation.`
-                    : `This deviation (${spike.pct_above_median > 0 ? '+' : ''}${spike.pct_above_median.toFixed(1)}%) is substantially above the typical ${spike.event_tag} uplift of ~${spike.event_typical_surge_pct}%. While the event window may contribute to elevated demand, the magnitude requires monitoring.`
+                    ? `This deviation (${spike.pct_above_median > 0 ? '+' : ''}${spike.pct_above_median.toFixed(1)}%) falls within the demo window's illustrative uplift range for ${spike.event_tag}. This overlap does not establish that the event caused the fare.`
+                    : `This deviation (${spike.pct_above_median > 0 ? '+' : ''}${spike.pct_above_median.toFixed(1)}%) exceeds the demo window's illustrative uplift of ~${spike.event_typical_surge_pct}%. The overlap is context only; route relevance and causality remain unverified.`
                   }
                 </p>
                 <p className="text-[11px] text-muted/70">{spike.event_description}</p>
@@ -215,19 +226,19 @@ function CaseFileModal({ spike, onClose }: { spike: Spike; onClose: () => void }
             </p>
           </div>
 
-          {/* Passenger Impact Score */}
+          {/* Passenger Exposure Proxy */}
           <div className="rounded-md border border-line bg-ground/30 px-5 py-3.5">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted">
-                  Passenger Impact Score
+                  Passenger Exposure Proxy
                 </h3>
                 <p className="mt-0.5 text-[11.5px] text-muted leading-relaxed">
-                  Decision-support indicator — not an exact passenger count.
+                  Uncalibrated prioritisation proxy — no passenger counts, bookings, or measured harm.
                 </p>
               </div>
-              <Pill tone={impactTone(spike.impact_score)}>
-                {spike.impact_score} / 100
+              <Pill tone={exposureTone(spike.exposure_proxy)}>
+                {spike.exposure_proxy} / 100
               </Pill>
             </div>
             <p className="mt-2 text-[11px] font-mono text-muted/80">
@@ -243,16 +254,23 @@ function CaseFileModal({ spike, onClose }: { spike: Spike; onClose: () => void }
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {[
                 { label: 'Observation ID', value: String(spike.observation_id ?? '—') },
+                { label: 'Source batch', value: spike.source_batch_id ?? 'Not recorded' },
                 { label: 'Data source', value: spike.source_label },
                 { label: 'Provider', value: spike.provider ?? 'Not applicable' },
                 { label: 'Cell definition', value: 'route × airline × fare class × lead-time bucket' },
                 { label: 'Detection formula', value: 'robust_z = 0.6745 × (ln(fare) − median(ln fare)) / MAD', mono: true },
-                { label: 'Threshold', value: 'Robust z > 3.5 AND ≥ 25% from cell median' },
+                { label: 'Threshold', value: `Robust z > ${threshold} AND ≥ 25% from cell median` },
                 { label: 'Cell size', value: `${spike.cell_observations} observations (confidence: ${spike.confidence})` },
                 { label: 'Quote date', value: spike.quote_date },
                 { label: 'Travel date', value: spike.travel_date },
                 { label: 'Calculation method', value: 'Median and MAD on log fares — outlier-resistant baseline' },
                 { label: 'Reason assignment', value: '7 deterministic rules, evaluated in priority order' },
+                ...(audit ? [
+                  { label: 'Calculation ID', value: audit.calculation_id, mono: true },
+                  { label: 'Method version', value: audit.calculation_version, mono: true },
+                  { label: 'Dataset SHA-256', value: audit.dataset_fingerprint_sha256, mono: true },
+                  { label: 'Audit scope', value: audit.audit_scope },
+                ] : []),
               ].map((item) => (
                 <div key={item.label}>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.09em] text-muted">
@@ -327,6 +345,7 @@ export default function Spikes() {
       min_cell_observations: number
       reason_codes: number
       confidence_bands: string
+      audit: AuditMetadata
     }
   } | null>(null)
   const [threshold, setThreshold] = useState('3.5')
@@ -393,7 +412,7 @@ export default function Spikes() {
           },
           {
             q: 'Why does it matter?',
-            a: 'Each flagged fare was compared only against fares in its own comparability cell — same route, carrier, cabin class and booking window. A fare that appears here is not just expensive; it is expensive relative to what that exact product normally costs. These are the observations most likely to affect passengers who have limited ability to switch.',
+            a: 'Each flagged fare was compared only against fares in its own comparability cell — same route, carrier, cabin class and booking window. A flag means the observation is unusual relative to that cell baseline. It does not prove consumer harm or explain the cause.',
           },
           {
             q: 'How confident are we?',
@@ -401,7 +420,7 @@ export default function Spikes() {
           },
           {
             q: 'What should an analyst do next?',
-            a: `Open the Case File on any "Escalate" or "Review" severity row. Check whether the anomaly is CARRIER_SPECIFIC_SPIKE (one carrier, others normal — warrants carrier query) or ROUTE_LEVEL_SPIKE (all carriers elevated — suggests market-wide pressure). If the fare is within an event window and classified "Expected", no immediate action is needed — file for trend monitoring.`,
+            a: `Open the Case File on any "Escalate" or "Review" severity row. Treat reason codes as deterministic context labels, not causal diagnoses. Cross-check the exact quote date with an independent source before contacting a carrier or drawing a market-wide conclusion.`,
           },
         ]} />
       )}
@@ -431,7 +450,7 @@ export default function Spikes() {
             <p className="text-[12px]">
               No machine learning, nothing unexplainable — every flag can be recomputed by hand
               from the numbers in the table below. Click <strong className="font-medium text-ink">View Case File</strong> on
-              any row for a full audit-ready breakdown.
+              any row for a reproducible calculation breakdown.
             </p>
           </div>
 
@@ -479,7 +498,12 @@ export default function Spikes() {
                       { label: 'Min cell size', value: `${data.evidence.min_cell_observations} observations` },
                       { label: 'Reason codes', value: `${data.evidence.reason_codes} deterministic rules, priority-ordered` },
                       { label: 'Confidence bands', value: data.evidence.confidence_bands },
-                      { label: 'Last updated', value: data.last_updated ?? 'N/A' },
+                      { label: 'Calculation ID', value: data.evidence.audit.calculation_id, mono: true },
+                      { label: 'Method version', value: data.evidence.audit.calculation_version, mono: true },
+                      { label: 'Dataset SHA-256', value: data.evidence.audit.dataset_fingerprint_sha256, mono: true },
+                      { label: 'Source batches', value: data.evidence.audit.source_batch_ids.join(', ') || 'None', mono: true },
+                      { label: 'Audit scope', value: data.evidence.audit.audit_scope },
+                      { label: 'Calculated at', value: data.evidence.audit.computed_at },
                     ]}
                   />
                 )}
@@ -487,12 +511,12 @@ export default function Spikes() {
             )}
             <div className="rounded-md border border-line bg-ground/50 px-3.5 py-3">
               <p className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-muted">
-                Passenger Impact Score
+                Passenger Exposure Proxy
               </p>
               <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
-                Each alert carries a 0–100 score combining route traffic weight,
-                fare deviation, booking urgency, severity, and confidence.
-                A decision-support indicator — not an exact passenger count.
+                Each alert carries a 0–100 prioritisation proxy combining an illustrative
+                route weight, fare deviation, booking urgency, severity, and confidence.
+                It contains no passenger counts, bookings, or measured consumer harm.
               </p>
               <p className="mt-1.5 font-mono text-[10.5px] text-muted/70">
                 weight% × (dev/25) × urgency × severity × confidence
@@ -528,7 +552,7 @@ export default function Spikes() {
                   <th className="pb-2 font-semibold">Event context</th>
                   <th className="pb-2 text-center font-semibold">Severity</th>
                   <th className="pb-2 text-right font-semibold">Robust z</th>
-                  <th className="pb-2 text-right font-semibold">Impact</th>
+                  <th className="pb-2 text-right font-semibold">Exposure proxy</th>
                   <th className="pb-2 text-right font-semibold"></th>
                 </tr>
               </thead>
@@ -580,8 +604,8 @@ export default function Spikes() {
                       </Pill>
                     </td>
                     <td className="py-2 text-right">
-                      <Pill tone={impactTone(s.impact_score)}>
-                        {s.impact_score}
+                      <Pill tone={exposureTone(s.exposure_proxy)}>
+                        {s.exposure_proxy}
                       </Pill>
                     </td>
                     <td className="py-2 text-right">
@@ -614,7 +638,12 @@ export default function Spikes() {
       )}
 
       {selectedSpike && (
-        <CaseFileModal spike={selectedSpike} onClose={() => setSelectedSpike(null)} />
+        <CaseFileModal
+          spike={selectedSpike}
+          threshold={data?.threshold ?? Number(threshold)}
+          audit={data?.evidence?.audit}
+          onClose={() => setSelectedSpike(null)}
+        />
       )}
     </div>
   )

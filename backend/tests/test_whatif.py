@@ -180,33 +180,34 @@ class TestProjectedApix:
         assert result["projected_apix"] < 100.0
 
 
-# ── project — impact_score ────────────────────────────────────────────────────
+# ── project — exposure proxy ──────────────────────────────────────────────────
 
-class TestImpactScore:
+class TestExposureProxy:
     def test_zero_change_zero_impact(self):
         result = project(0, 0, 0, BASELINE_CARRIERS)
-        assert result["impact_score"] == pytest.approx(0.0, abs=0.1)
+        assert result["exposure_proxy"] == pytest.approx(0.0, abs=0.1)
+        assert result["impact_score"] == result["exposure_proxy"]
 
     def test_impact_proportional_to_change(self):
         result = project(10, 0, 0, BASELINE_CARRIERS)
         expected = min(100.0, abs(result["projected_change_pct"]) * IMPACT_MULTIPLIER)
-        assert result["impact_score"] == pytest.approx(expected, abs=0.1)
+        assert result["exposure_proxy"] == pytest.approx(expected, abs=0.1)
 
     def test_impact_caps_at_100(self):
         """Very large scenario must not exceed 100."""
         result = project(50, 50, -50, 1)
-        assert result["impact_score"] <= 100.0
+        assert result["exposure_proxy"] <= 100.0
 
     def test_impact_non_negative(self):
         """Even a fare-relief scenario scores ≥ 0."""
         result = project(-50, -50, 50, 8)
-        assert result["impact_score"] >= 0.0
+        assert result["exposure_proxy"] >= 0.0
 
     def test_impact_symmetric(self):
         """Equal magnitude positive and negative changes have equal impact scores."""
         r_up   = project(20, 0, 0, BASELINE_CARRIERS)
         r_down = project(-20, 0, 0, BASELINE_CARRIERS)
-        assert r_up["impact_score"] == pytest.approx(r_down["impact_score"], abs=0.1)
+        assert r_up["exposure_proxy"] == pytest.approx(r_down["exposure_proxy"], abs=0.1)
 
 
 # ── project — risk_level ──────────────────────────────────────────────────────
@@ -240,9 +241,12 @@ class TestProjectStructure:
             "demand_contribution", "fuel_contribution",
             "capacity_contribution", "competition_contribution",
             "projected_change_pct", "projected_apix",
-            "impact_score", "risk_level", "explanation",
+            "exposure_proxy", "impact_score", "risk_level", "explanation",
+            "model_metadata",
         }
         assert required.issubset(set(result.keys()))
+        assert result["model_metadata"]["model_status"] == "UNCALIBRATED_ILLUSTRATIVE_SCENARIO"
+        assert "No external study" in result["model_metadata"]["citation_status"]
 
     def test_explanation_is_non_empty_string(self):
         result = project(10, 5, 5, 3)

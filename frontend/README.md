@@ -17,15 +17,17 @@ Verification commands:
 npm run lint
 npm run build
 # With backend and frontend dev servers running:
-npm run smoke
+npm run test:interaction
 ```
 
-The smoke command visits all 10 routes with Judge Mode enabled and fails on
-browser console warnings/errors, page exceptions, or unsuccessful API calls.
+The interaction command restores the deterministic sample and verifies the
+one-click empty-state recovery, real filters, Case File evidence and threshold,
+drawers, What-If sliders, Judge Mode across all 10 routes, mobile overflow, and
+runtime/API errors.
 
 Pages are route-level lazy chunks. The shared shell reports operating mode and
-stored-data provenance independently so Demo, Imported, Live, and Hybrid states
-cannot be confused.
+stored-data provenance independently. Analytical endpoints use one explicit
+active source cohort even when several provenance types coexist in storage.
 
 See the repository [README](../README.md) for backend setup, live-provider
 activation, methodology, and the complete demo path.

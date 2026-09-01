@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "smoke": "node apix-check.mjs",
+    "test:interaction": "node apix-check.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -26,9 +26,16 @@ interface Projection {
   competitionContrib: number
   projectedChange: number
   projectedApix: number
-  impactScore: number
+  exposureProxy: number
   risk: 'Low' | 'Watch' | 'Review' | 'Escalate'
   explanation: string
+  modelMetadata: {
+    model_status: string
+    coefficient_basis: string
+    citation_status: string
+    valid_use: string
+    invalid_uses: string[]
+  }
 }
 
 // ─── Tone helpers ─────────────────────────────────────────────────────────────
@@ -41,10 +48,10 @@ const RISK_TONE: Record<string, 'ok' | 'warn' | 'alert' | 'escalate'> = {
 }
 
 const RISK_DESC: Record<string, string> = {
-  Low:      'Minimal fare pressure — within normal variation.',
-  Watch:    'Moderate pressure — worth monitoring over time.',
-  Review:   'Significant pressure — analyst review recommended.',
-  Escalate: 'Severe pressure — immediate attention warranted.',
+  Low:      'Small output under the prototype magnitude bands.',
+  Watch:    'Moderate output under the prototype magnitude bands.',
+  Review:   'Large output under the prototype magnitude bands.',
+  Escalate: 'Very large output under the prototype magnitude bands.',
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -87,6 +94,8 @@ function Slider({
         </span>
       </div>
       <input
+        aria-label={label}
+        data-testid={`whatif-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
         type="range"
         min={min}
         max={max}
@@ -146,13 +155,13 @@ function ContribRow({
   )
 }
 
-function ImpactBar({ score }: { score: number }) {
+function ExposureBar({ score }: { score: number }) {
   const color =
     score >= 75 ? '#e05c3a' : score >= 45 ? '#d48a11' : score >= 20 ? '#0b6e6e' : '#2a9174'
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-[11px] text-muted">
-        <span>Passenger impact score</span>
+        <span>Scenario exposure proxy</span>
         <span className="tnum font-semibold text-ink">{score.toFixed(1)} / 100</span>
       </div>
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-line">
@@ -218,18 +227,24 @@ export default function Whatif() {
           competitionContrib: result.competition_contribution,
           projectedChange: result.projected_change_pct,
           projectedApix: result.projected_apix,
-          impactScore: result.impact_score,
+          exposureProxy: result.exposure_proxy,
           risk: result.risk_level,
           explanation: result.explanation,
+          modelMetadata: result.model_metadata,
         },
       })
       setError('')
-    }).catch((e: Error) => { if (!cancelled) setError(e.message) })
+    }).catch((e: Error) => {
+      if (!cancelled) {
+        setError(e.message)
+      }
+    })
     return () => { cancelled = true }
   }, [s, scenarioKey])
 
-  const p = projection?.key === scenarioKey ? projection.value : null
+  const p = projection?.value ?? null
   if (!p) return error ? <ErrorNote message={error} /> : <Spinner label="Loading scenario model" />
+  const showingPendingResult = projection?.key !== scenarioKey
 
   const allContribs = [
     Math.abs(p.demandContrib),
@@ -269,7 +284,7 @@ export default function Whatif() {
             </span>
           </div>
           <p className="mt-1.5 text-[13px] text-muted">
-            Adjust market factors and see how the airfare index would respond. Values update automatically.
+            Explore a transparent formula using uncalibrated assumptions; this is not a forecast.
           </p>
         </div>
         <div className="rounded-lg border border-line bg-surface px-4 py-2.5 text-[12px]">
@@ -279,35 +294,34 @@ export default function Whatif() {
         </div>
       </header>
 
+      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-[11.5px] leading-relaxed text-amber-900">
+        <strong>Uncalibrated illustrative model.</strong> {p.modelMetadata.coefficient_basis}{' '}
+        {p.modelMetadata.citation_status} Valid use: {p.modelMetadata.valid_use}
+      </div>
+
+      {error && <ErrorNote message={`Scenario recalculation failed: ${error}`} />}
+
       {/* ───────────────────────── JUDGE MODE ───────────────────────── */}
-      {judgeMode && (
+      {judgeMode && !showingPendingResult && (
         <JudgePanel items={[
           {
             q: 'What happened?',
-            a: `Under this scenario — demand ${s.demand >= 0 ? '+' : ''}${s.demand}%, fuel ${s.fuel >= 0 ? '+' : ''}${s.fuel}%, capacity ${s.capacity >= 0 ? '+' : ''}${s.capacity}%, ${s.carriers} carrier${s.carriers !== 1 ? 's' : ''} — the model projects a ${changeSign}${p.projectedChange.toFixed(2)}% change to the airfare index (from ${s.baselineApix.toFixed(2)} to ${p.projectedApix.toFixed(2)}). Risk level: ${p.risk}.`,
+            a: `Under this input set, the illustrative formula outputs ${changeSign}${p.projectedChange.toFixed(2)}% (from ${s.baselineApix.toFixed(2)} to ${p.projectedApix.toFixed(2)}). The ${p.risk} label is a team-defined magnitude band, not an empirical risk estimate.`,
           },
           {
             q: 'Why does it matter?',
-            a: `The dominant driver in this scenario is ${dominantDriver.name} (${dominantDriver.value >= 0 ? '+' : ''}${dominantDriver.value.toFixed(1)} percentage points). ${
-              p.risk === 'Low'
-                ? 'At this level of change, fares are within normal variation — no policy intervention is indicated.'
-                : p.risk === 'Watch'
-                ? 'A change of this magnitude is worth monitoring but does not yet constitute a fare-pressure event.'
-                : p.risk === 'Review'
-                ? 'A change at this level would represent a meaningful fare increase affecting travellers. Analyst review of actual market data would be warranted.'
-                : 'A change of this magnitude would be severe. In a real market, this level of index movement would typically prompt regulatory scrutiny.'
-            }`,
+            a: `Within the formula, the largest numerical contribution is ${dominantDriver.name} (${dominantDriver.value >= 0 ? '+' : ''}${dominantDriver.value.toFixed(1)} percentage points). That identifies sensitivity to an assumption; it does not identify a real-world cause or policy effect.`,
           },
           {
             q: 'How confident are we?',
-            a: `This is a scenario-planning model, not a forecast. Elasticity coefficients are explicit prototype assumptions that require calibration against real market data. The competition adjustment uses a logarithmic scale calibrated to 4 carriers as baseline. Results should not be cited as predictions of real airfare movements. Passenger impact score: ${p.impactScore.toFixed(0)}/100.`,
+            a: `Confidence is not estimated. The coefficients and magnitude bands are team-defined, uncalibrated assumptions with no claimed empirical source for these exact values. The exposure proxy (${p.exposureProxy.toFixed(0)}/100) is only |output| × 3 and contains no passenger data.`,
           },
           {
             q: 'What should an analyst do next?',
             a: `${
               Math.abs(p.projectedChange) < 0.5
                 ? 'The scenario factors largely offset each other. Try varying individual inputs to understand which lever has the most effect — hold three constant and move one.'
-                : `Identify the single input with the largest contribution (currently: ${dominantDriver.name}) and test sensitivity by varying it while holding the others fixed. If the risk level is ${p.risk} under plausible market conditions, flag for periodic monitoring in the full APIx system.`
+                : `Vary one input at a time and record sensitivity. Do not use the output operationally until coefficients are cited, estimated on an appropriate dataset, and validated out of sample.`
             }`,
           },
         ]} />
@@ -324,7 +338,7 @@ export default function Whatif() {
                 min={-50} max={50}
                 onChange={set('demand')}
                 format={(v) => (v >= 0 ? `+${v}%` : `${v}%`)}
-                note="Positive = more demand → upward fare pressure"
+                note="Formula assumption: +1% demand contributes +0.60 percentage points"
               />
               <Slider
                 label="Jet fuel cost change"
@@ -332,7 +346,7 @@ export default function Whatif() {
                 min={-50} max={50}
                 onChange={set('fuel')}
                 format={(v) => (v >= 0 ? `+${v}%` : `${v}%`)}
-                note="Positive = higher fuel costs → passed through to fares"
+                note="Formula assumption: +1% fuel cost contributes +0.35 percentage points"
               />
               <Slider
                 label="Seat capacity change"
@@ -340,7 +354,7 @@ export default function Whatif() {
                 min={-50} max={50}
                 onChange={set('capacity')}
                 format={(v) => (v >= 0 ? `+${v}%` : `${v}%`)}
-                note="Positive = more seats → downward fare pressure (supply effect)"
+                note="Formula assumption: +1% capacity contributes −0.50 percentage points"
                 higherIsPressure={false}
               />
               <Slider
@@ -355,7 +369,7 @@ export default function Whatif() {
                     ? '1 (monopoly)'
                     : String(v)
                 }
-                note={`Model baseline: ${BASELINE_CARRIERS} carriers. Fewer carriers → higher concentration → upward pressure.`}
+                note={`Formula assumption: ${BASELINE_CARRIERS}-carrier baseline with a team-defined logarithmic adjustment.`}
                 neutral={BASELINE_CARRIERS}
                 higherIsPressure={false}
               />
@@ -377,7 +391,7 @@ export default function Whatif() {
                 Reset to defaults
               </button>
               <span className="text-[11.5px] text-muted">
-                Values update automatically — no submit needed.
+                {showingPendingResult ? 'Recalculating… controls remain available.' : 'Values update automatically — no submit needed.'}
               </span>
             </div>
           </Card>
@@ -432,7 +446,8 @@ export default function Whatif() {
                 </div>
 
                 <p className="text-[11px] leading-relaxed text-muted">
-                  Impact score = min(100, |Δ%| × 3).  Risk level: &lt;5% Low · 5–15% Watch · 15–30% Review · ≥30% Escalate.
+                  Exposure proxy = min(100, |Δ%| × 3). It is a display scale with no passenger data.
+                  Magnitude bands: &lt;5% Low · 5–15% Watch · 15–30% Review · ≥30% Escalate.
                 </p>
               </div>
             )}
@@ -458,6 +473,7 @@ export default function Whatif() {
                 Projected index change
               </div>
               <div
+                data-testid="whatif-projected-change"
                 className="font-serif text-[52px] font-semibold leading-none tnum"
                 style={{
                   color: p.projectedChange > 0 ? '#c2410c' : p.projectedChange < 0 ? '#15803d' : '#8ca0b5',
@@ -476,7 +492,9 @@ export default function Whatif() {
               className="px-6 py-2.5 border-t flex items-center justify-between"
               style={{ borderColor: 'rgba(0,0,0,0.05)', background: 'rgba(0,0,0,0.015)' }}
             >
-              <span className="text-[11px] font-medium text-muted">Monitoring signal</span>
+              <span className="text-[11px] font-medium text-muted">
+                {showingPendingResult ? 'Recalculating inputs…' : 'Illustrative output'}
+              </span>
               <Pill tone={RISK_TONE[p.risk]}>
                 {p.risk}
               </Pill>
@@ -486,25 +504,25 @@ export default function Whatif() {
           {/* Risk description */}
           <div className="rounded-lg border border-line bg-surface px-5 py-4">
             <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted mb-1.5">
-              Risk assessment
+              Prototype magnitude band
             </div>
             <p className="text-[13px] leading-relaxed text-ink font-medium">
               {RISK_DESC[p.risk]}
             </p>
           </div>
 
-          {/* Impact score */}
+          {/* Exposure proxy */}
           <div className="rounded-lg border border-line bg-surface px-5 py-4">
-            <ImpactBar score={p.impactScore} />
+            <ExposureBar score={p.exposureProxy} />
             <p className="mt-2 text-[11px] text-muted">
-              Passenger impact indicator (0–100). Scales with projected change magnitude.
+              Defined as min(100, |formula output| × 3). No passenger counts or harm data.
             </p>
           </div>
 
           {/* Plain-English explanation */}
           <div className="rounded-lg border border-accent/20 bg-accent-soft/30 px-5 py-4">
             <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-accent mb-2">
-              Plain-English explanation
+              Formula explanation
             </div>
             <p className="text-[12.5px] leading-relaxed text-ink">
               {p.explanation}
@@ -513,8 +531,9 @@ export default function Whatif() {
 
           {/* Disclaimer */}
           <div className="rounded-md border border-[#dbeafe] bg-[#eff6ff] px-4 py-3 text-[11px] leading-relaxed text-[#1e40af]">
-            <strong>Scenario planning tool only.</strong> Coefficients are simplified proxies.
-            Results do not predict real airfare movements and should not be cited as official estimates.
+            <strong>Scenario planning tool only.</strong> Exact coefficients are team-defined,
+            uncited, and uncalibrated. Results do not predict real fares, estimate passenger harm,
+            establish causality, or support enforcement decisions.
           </div>
         </div>
       </div>

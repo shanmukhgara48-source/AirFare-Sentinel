@@ -323,6 +323,8 @@ class TestPassengerImpactScore(unittest.TestCase):
         self.assertEqual(len(flagged), 1)
         s = flagged[0]
         self.assertIn("impact_score", s)
+        self.assertIn("exposure_proxy", s)
+        self.assertEqual(s["impact_score"], s["exposure_proxy"])
         self.assertIsInstance(s["impact_score"], int)
         self.assertGreaterEqual(s["impact_score"], 0)
         self.assertLessEqual(s["impact_score"], 100)

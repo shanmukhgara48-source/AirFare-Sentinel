@@ -1,7 +1,8 @@
 """
-Fairness Lens — route category fare pressure comparison.
+Fairness Lens — like-for-like route-category index comparison.
 
-Aggregates fare pressure, anomaly frequency, and passenger impact across
+Aggregates within-category price-index change, anomaly frequency, and a
+passenger exposure proxy across
 five policy categories, plus an explicit unclassified bucket for routes whose
 category metadata has not been supplied.
 
@@ -27,6 +28,8 @@ Unclassified       : Imported/live routes outside the prototype mapping. Kept
 import statistics
 from collections import defaultdict
 from typing import Literal
+
+from app.engine.index import compute_index_timeseries
 
 CategoryLabel = Literal[
     "Metro", "Business-heavy", "Tourism-heavy",
@@ -99,6 +102,43 @@ def _category_for(origin: str, destination: str) -> str:
     return ROUTE_CATEGORIES.get(f"{origin}-{destination}", "Unclassified")
 
 
+def _index_summary(rows: list[dict]) -> dict:
+    """Return a within-group index summary when comparability fields exist."""
+    required = {
+        "origin", "destination", "airline", "fare_class", "lead_bucket",
+        "quote_date", "total_fare",
+    }
+    if not rows or any(not required.issubset(row) for row in rows):
+        return {
+            "index_value": 100.0,
+            "index_change_pct": 0.0,
+            "index_period_start": None,
+            "index_period_end": None,
+            "index_quality_flag": None,
+        }
+    series = compute_index_timeseries(rows, granularity="day", weighted=True)
+    if not series:
+        return {
+            "index_value": None,
+            "index_change_pct": None,
+            "index_period_start": None,
+            "index_period_end": None,
+            "index_quality_flag": None,
+        }
+    first, latest = series[0], series[-1]
+    change = (
+        100 * (latest["apix_value"] - first["apix_value"]) / first["apix_value"]
+        if first["apix_value"] else 0.0
+    )
+    return {
+        "index_value": latest["apix_value"],
+        "index_change_pct": round(change, 2),
+        "index_period_start": first["period"],
+        "index_period_end": latest["period"],
+        "index_quality_flag": latest["quality_flag"],
+    }
+
+
 def compute_fairness(
     observations: list[dict],
     spike_cases: list[dict],
@@ -112,7 +152,8 @@ def compute_fairness(
         Each dict must contain ``origin``, ``destination``, ``total_fare``.
     spike_cases:
         Output of ``detect_spikes()`` — each dict must contain ``origin``,
-        ``destination``, ``direction``, ``impact_score``.
+        ``destination``, ``direction``, and ``exposure_proxy`` (the deprecated
+        ``impact_score`` alias is also accepted).
         Only cases with ``direction == 'spike'`` count as alerts; drops are
         excluded because they represent fare relief, not pressure.
 
@@ -122,10 +163,12 @@ def compute_fairness(
     are included with zero/null metrics so the frontend has a stable contract.
     """
     # ── Group observations by category ───────────────────────────────────────
+    observations_by_cat: dict[str, list[dict]] = defaultdict(list)
     fares_by_cat: dict[str, list[float]] = defaultdict(list)
     routes_by_cat: dict[str, set[str]] = defaultdict(set)
     for o in observations:
         cat = _category_for(o["origin"], o["destination"])
+        observations_by_cat[cat].append(o)
         fares_by_cat[cat].append(float(o["total_fare"]))
         routes_by_cat[cat].add(f"{o['origin']}-{o['destination']}")
 
@@ -141,9 +184,11 @@ def compute_fairness(
             cat = _category_for(origin, destination)
             spikes_by_cat[cat].append(case)
 
-    # Basket-wide median for fare-pressure comparison.
-    all_fares = [f for fares in fares_by_cat.values() for f in fares]
-    basket_median = statistics.median(all_fares) if all_fares else 1.0
+    # Compare index movement with index movement — never a category mean against
+    # a median of individual fares. The basket is calculated with the same
+    # cell-relative method as each category.
+    basket_index = _index_summary(observations)
+    basket_change = basket_index["index_change_pct"] or 0.0
 
     results: list[dict] = []
     for cat in CATEGORY_ORDER:
@@ -163,6 +208,13 @@ def compute_fairness(
                 "alert_count": 0,
                 "alert_rate": None,
                 "avg_impact_score": None,
+                "avg_exposure_proxy": None,
+                "index_value": None,
+                "index_change_pct": None,
+                "relative_to_basket_pts": None,
+                "index_period_start": None,
+                "index_period_end": None,
+                "index_quality_flag": None,
                 "fare_pressure": None,
                 "routes": [],
             })
@@ -172,15 +224,19 @@ def compute_fairness(
         median_fare = statistics.median(fares)
         alert_rate = alert_count / obs_count
 
-        avg_impact = (
-            statistics.mean(c["impact_score"] for c in cat_spikes)
+        avg_exposure = (
+            statistics.mean(
+                c.get("exposure_proxy", c.get("impact_score", 0.0))
+                for c in cat_spikes
+            )
             if cat_spikes else None
         )
-
-        ratio = avg_fare / basket_median
-        if ratio > 1.10:
+        index_summary = _index_summary(observations_by_cat[cat])
+        category_change = index_summary["index_change_pct"] or 0.0
+        relative_to_basket = round(category_change - basket_change, 2)
+        if relative_to_basket > 2.0:
             fare_pressure = "High"
-        elif ratio < 0.90:
+        elif relative_to_basket < -2.0:
             fare_pressure = "Low"
         else:
             fare_pressure = "Moderate"
@@ -194,8 +250,15 @@ def compute_fairness(
             "median_fare": round(median_fare, 2),
             "alert_count": alert_count,
             "alert_rate": round(alert_rate, 4),
-            "avg_impact_score": round(avg_impact, 1) if avg_impact is not None else None,
+            "avg_exposure_proxy": round(avg_exposure, 1) if avg_exposure is not None else None,
+            "avg_impact_score": round(avg_exposure, 1) if avg_exposure is not None else None,
+            **index_summary,
+            "relative_to_basket_pts": relative_to_basket,
             "fare_pressure": fare_pressure,
+            "pressure_method": (
+                "Category index change minus basket index change; ±2 percentage-point "
+                "prototype monitoring bands."
+            ),
             "routes": sorted(routes_by_cat.get(cat, set())),
         })
 

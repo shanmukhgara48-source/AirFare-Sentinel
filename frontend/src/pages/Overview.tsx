@@ -23,7 +23,7 @@ import {
   type Spike,
   type Trends,
 } from '../api'
-import { axisProps, gridProps, tooltipProps } from '../components/chart'
+import { axisProps, chartLabel, chartNumber, gridProps, tooltipProps } from '../components/chart'
 import {
   Button,
   Card,
@@ -91,6 +91,7 @@ export default function Overview() {
   } | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [startingDemo, setStartingDemo] = useState(false)
 
   // Filters
   const [granularity, setGranularity] = useState('day')
@@ -184,6 +185,18 @@ export default function Overview() {
     setDateTo('')
   }
 
+  async function startJudgeDemo() {
+    setStartingDemo(true)
+    setError('')
+    try {
+      await api.loadSample()
+      window.location.reload()
+    } catch (e) {
+      setStartingDemo(false)
+      setError(e instanceof Error ? e.message : 'Unable to start the judge demo.')
+    }
+  }
+
   if (loading) return <Spinner />
   if (error) return <ErrorNote message={error} />
   if (!data || data.empty)
@@ -192,9 +205,14 @@ export default function Overview() {
         title="No data loaded yet"
         body="Load the bundled sample dataset — about 23,000 synthetic fare observations across 14 routes and 4 fictional carriers — to populate every screen."
         action={
-          <Link to="/admin">
-            <Button>Go to Data &amp; Ingestion</Button>
-          </Link>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button onClick={startJudgeDemo} disabled={startingDemo}>
+              {startingDemo ? 'Starting demo…' : 'Start Judge Demo'}
+            </Button>
+            <Link to="/admin">
+              <Button variant="secondary">Open Data &amp; Ingestion</Button>
+            </Link>
+          </div>
         }
       />
     )
@@ -214,8 +232,8 @@ export default function Overview() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="font-serif text-[26px] leading-tight tracking-tight">National Airfare Price Index</h1>
-            <DataSourceBadge sourceTypes={filterOpts?.source_types ?? []} />
+            <h1 className="font-serif text-[26px] leading-tight tracking-tight">{data.indicator_name}</h1>
+            <DataSourceBadge sourceTypes={filterOpts?.source_types?.length ? filterOpts.source_types : []} />
           </div>
           <p className="mt-1.5 text-[13px] text-muted">
             <span className="font-mono text-[12px]">{data.period_start}</span>
@@ -251,12 +269,26 @@ export default function Overview() {
         </div>
       </header>
 
+      {data.suppression_reason && (
+        <div
+          data-testid="publication-gate"
+          className={`rounded-lg border px-4 py-3 text-[12.5px] leading-relaxed ${
+            data.publication_status === 'SUPPRESSED'
+              ? 'border-red-200 bg-red-50 text-red-800'
+              : 'border-amber-200 bg-amber-50 text-amber-800'
+          }`}
+        >
+          <strong>{data.publication_status === 'SUPPRESSED' ? 'Publication gate enforced.' : 'Provisional publication.'}</strong>{' '}
+          {data.suppression_reason}
+        </div>
+      )}
+
       {/* ───────────────────────── JUDGE MODE ───────────────────────── */}
       {judgeMode && (
         <JudgePanel items={[
           {
             q: 'What happened?',
-            a: `The national airfare index is ${data.headline_index?.toFixed(2) ?? '—'} — fares are ${
+            a: `The ${data.indicator_name.toLowerCase()} is ${data.headline_index?.toFixed(2) ?? '—'} — the matched fare basket is ${
               (data.change_pct ?? 0) > 0
                 ? `${(data.change_pct ?? 0).toFixed(2)}% higher`
                 : (data.change_pct ?? 0) < 0
@@ -270,7 +302,7 @@ export default function Overview() {
           },
           {
             q: 'Why does it matter?',
-            a: `An index above 100 means the average traveller is paying more for the same route, cabin class, and booking window than at the start of the period. The index is built from ${data.observation_count.toLocaleString()} fare quotes across ${data.route_count} routes and ${data.airline_count} carriers — it separates genuine price changes from travellers simply switching to later or cheaper bookings.`,
+            a: `A value above 100 means matched fares in the observed basket are higher than their cell baselines. It does not measure what an average traveller paid. The calculation uses ${data.observation_count.toLocaleString()} observed or generated quotes across ${data.route_count} routes and ${data.airline_count} carriers.`,
           },
           {
             q: 'How confident are we?',
@@ -279,7 +311,7 @@ export default function Overview() {
                 ? 'Over 90% of comparability cells reported data; the index is well-supported.'
                 : qf === 'AMBER'
                 ? '80–90% coverage — some cells are sparse; treat the headline as indicative.'
-                : 'Below 80% coverage — significant data gaps; interpret with caution.'
+                : 'Below 80% coverage — the national headline is suppressed and only an experimental basket value is shown.'
             } ${data.coverage.total_cells} cells observed across ${data.coverage.total_periods} periods.`,
           },
           {
@@ -367,7 +399,7 @@ export default function Overview() {
       {/* ───────────────────────── STAT CARDS ───────────────────────── */}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
         <StatTile
-          label="National Index"
+          label={data.headline_publishable ? 'Prototype index' : 'Experimental indicator'}
           value={data.headline_index?.toFixed(2) ?? '—'}
           hint={`Base = 100 · ${data.period_start}`}
         />
@@ -427,6 +459,12 @@ export default function Overview() {
               { label: 'Weight source', value: data.evidence.weight_source },
               { label: 'Cell definition', value: data.evidence.cell_definition },
               { label: 'Coverage', value: `${data.coverage.mean_coverage_pct}% cell coverage · quality ${qf} · ${data.coverage.total_cells} cells` },
+              { label: 'Publication status', value: `${data.publication_status}${data.suppression_reason ? ` · ${data.suppression_reason}` : ''}` },
+              { label: 'Calculation ID', value: data.evidence.audit.calculation_id, mono: true },
+              { label: 'Method version', value: data.evidence.audit.calculation_version, mono: true },
+              { label: 'Dataset SHA-256', value: data.evidence.audit.dataset_fingerprint_sha256, mono: true },
+              { label: 'Source batches', value: data.evidence.audit.source_batch_ids.join(', ') || 'None', mono: true },
+              { label: 'Audit scope', value: data.evidence.audit.audit_scope },
               { label: 'Last updated', value: data.last_updated ?? 'N/A' },
             ]}
           />
@@ -483,9 +521,9 @@ export default function Overview() {
             />
             <Tooltip
               {...tooltipProps}
-              formatter={(v: any, name: any) => [
-                Number(v).toFixed(2),
-                name === 'apix_weighted' ? 'Weighted (headline)' : 'Unweighted (sensitivity)',
+              formatter={(value: unknown, name: unknown) => [
+                chartNumber(value).toFixed(2),
+                chartLabel(name) === 'apix_weighted' ? 'Weighted (headline)' : 'Unweighted (sensitivity)',
               ]}
             />
             <Area
@@ -548,7 +586,7 @@ export default function Overview() {
                   <YAxis type="category" dataKey="group" {...axisProps} width={50} />
                   <Tooltip
                     {...tooltipProps}
-                    formatter={(v: any) => [formatINR(Number(v)), 'Avg fare']}
+                    formatter={(value: unknown) => [formatINR(chartNumber(value)), 'Avg fare']}
                   />
                   <Bar dataKey="avg_fare" radius={[0, 3, 3, 0]} barSize={17}>
                     {airlineRows.map((r) => (
@@ -661,8 +699,8 @@ export default function Overview() {
             />
             <Tooltip
               {...tooltipProps}
-              formatter={(v: any) => [Number(v).toFixed(2), 'Index']}
-              labelFormatter={(l: any) => `Booked ${l} before departure`}
+              formatter={(value: unknown) => [chartNumber(value).toFixed(2), 'Index']}
+              labelFormatter={(label: unknown) => `Booked ${chartLabel(label)} before departure`}
             />
             <Bar dataKey="apix_value" radius={[3, 3, 0, 0]} barSize={54}>
               {data.lead_buckets.map((b) => (
@@ -716,7 +754,7 @@ export default function Overview() {
                   <th className="pb-1.5 text-right font-semibold">Fare</th>
                   <th className="pb-1.5 text-right font-semibold">Deviation</th>
                   <th className="pb-1.5 text-right font-semibold">Z-score</th>
-                  <th className="pb-1.5 text-right font-semibold">Impact</th>
+                  <th className="pb-1.5 text-right font-semibold">Exposure proxy</th>
                 </tr>
               </thead>
               <tbody>
@@ -746,8 +784,8 @@ export default function Overview() {
                       </Pill>
                     </td>
                     <td className="py-1.5 text-right">
-                      <Pill tone={s.impact_score >= 61 ? 'alert' : s.impact_score >= 31 ? 'warn' : 'neutral'}>
-                        {s.impact_score}
+                      <Pill tone={s.exposure_proxy >= 61 ? 'alert' : s.exposure_proxy >= 31 ? 'warn' : 'neutral'}>
+                        {s.exposure_proxy}
                       </Pill>
                     </td>
                   </tr>

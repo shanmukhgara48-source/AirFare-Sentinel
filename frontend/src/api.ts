@@ -3,6 +3,14 @@ export interface IndexPoint {
   apix_value: number
   apix_weighted: number
   apix_unweighted: number
+  aggregation_method:
+    | 'prototype_weighted_laspeyres'
+    | 'partial_prototype_weighted_subset'
+    | 'unweighted_jevons_fallback'
+  weighted_result_available: boolean
+  weighting_complete: boolean
+  weighted_reference_cells: number
+  unsupported_reference_cells: number
   active_cells: number
   total_cells: number
   coverage_pct: number
@@ -28,6 +36,10 @@ export interface Coverage {
   total_periods: number
   mean_coverage_pct: number
   mean_weight_coverage_pct: number
+  weighted_cells: number
+  unsupported_weight_cells: number
+  weighting_complete: boolean
+  weighting_notice: string
   complete_cells: number
   sparse_cells: { cell: string[]; periods_present: number; coverage_pct: number }[]
   quality_flag: 'GREEN' | 'AMBER' | 'RED'
@@ -62,11 +74,13 @@ export interface OverviewEvidence {
   alert_threshold: number
   alert_min_deviation_pct: number
   cell_definition: string
-  weight_source: string
+    weight_source: string
+    weighting_status: string
   audit: AuditMetadata
 }
 
 export interface Overview {
+  live_only?: boolean
   empty: boolean
   message?: string
   indicator_name: string
@@ -131,6 +145,8 @@ export interface Spike {
   recommended_action: string
   impact_score: number
   exposure_proxy: number
+  exposure_proxy_available: boolean
+  exposure_proxy_basis: string
   source_batch_id: string | null
   source_type: 'demo' | 'imported' | 'live'
   provider: string | null
@@ -187,6 +203,8 @@ export interface CompareRow {
   delta: number | null
   change_pct: number | null
   cell_count: number | null
+  aggregation_method: IndexPoint['aggregation_method'] | null
+  weighting_complete: boolean
   observation_count: number
   airline_count: number | null
   route_count: number | null
@@ -242,6 +260,7 @@ export interface LiveFetchStatus {
 }
 
 export interface AnalysisSourceState {
+  live_only?: boolean
   dataset_mode: 'empty' | 'demo' | 'live' | 'imported' | 'hybrid'
   dataset_label: string
   dataset_notice: string
@@ -273,6 +292,9 @@ export interface WhatIfProjection {
   competition_contribution: number
   projected_change_pct: number
   projected_apix: number
+  raw_projected_apix: number
+  outside_model_domain: boolean
+  validity_warning: string | null
   impact_score: number
   exposure_proxy: number
   risk_level: 'Low' | 'Watch' | 'Review' | 'Escalate'
@@ -302,7 +324,17 @@ export interface Batch {
   filename: string
   accepted_count: number
   quarantined_count: number
+  stored_rows?: number
   live_rows: number
+}
+
+export interface LiveItinerary {
+  id: number; origin: string; destination: string; airline: string; flight_number: string | null;
+  departure_time: string | null; arrival_time: string | null; travel_date: string; quote_date: string;
+  created_at: string; total_fare: number; provider: string; source_type: 'live'; price_status: string | null
+}
+export interface NetworkStatus {
+  state: string; completed: number; total: number; accepted: number; errors: number; empty_routes: number; departure_date?: string
 }
 
 export interface ObservationRow {
@@ -323,23 +355,40 @@ export interface ObservationRow {
   provider: string | null
 }
 
+const apiOrigin = (import.meta.env.VITE_API_ORIGIN ?? '').trim().replace(/\/+$/, '')
+
+export function apiUrl(path: string): string {
+  return `${apiOrigin}${path}`
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init)
-  if (!res.ok) {
-    const body = await res.text()
-    let detail = body
-    try {
-      const parsed = JSON.parse(body) as { detail?: string | { msg?: string }[] }
-      if (typeof parsed.detail === 'string') detail = parsed.detail
-      else if (Array.isArray(parsed.detail)) {
-        detail = parsed.detail.map((item) => item.msg ?? 'Invalid request').join('; ')
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 15_000)
+  try {
+    const res = await fetch(apiUrl(path), { ...init, signal: controller.signal })
+    if (!res.ok) {
+      const body = await res.text()
+      let detail = body
+      try {
+        const parsed = JSON.parse(body) as { detail?: string | { msg?: string }[] }
+        if (typeof parsed.detail === 'string') detail = parsed.detail
+        else if (Array.isArray(parsed.detail)) {
+          detail = parsed.detail.map((item) => item.msg ?? 'Invalid request').join('; ')
+        }
+      } catch {
+        // Preserve a plain-text response body when the server did not return JSON.
       }
-    } catch {
-      // Preserve a plain-text response body when the server did not return JSON.
+      throw new Error(detail || `Request failed (${res.status})`)
     }
-    throw new Error(detail || `Request failed (${res.status})`)
+    return res.json()
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('The API request timed out. Check that the backend is running.')
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
   }
-  return res.json()
 }
 
 export const qs = (params: Record<string, string | number | undefined | null>) => {
@@ -352,6 +401,9 @@ export const qs = (params: Record<string, string | number | undefined | null>) =
 }
 
 export const api = {
+  networkStatus: () => request<NetworkStatus>('/api/admin/network-fetch/status'),
+  startNetwork: (params: Record<string, string | number>) => request<NetworkStatus>(`/api/admin/network-fetch${qs(params)}`, { method: 'POST' }),
+  liveItineraries: (params: Record<string, string | number>) => request<{ total: number; rows: LiveItinerary[] }>(`/api/live-itineraries${qs(params)}`),
   version: () => request<SystemVersion>('/api/version'),
   whatif: (params: {
     demand_change_pct: number
@@ -449,6 +501,9 @@ export interface VulnerabilityBucket {
   alert_rate: number
   urgency_weight: number
   coverage_confidence: number
+  evidence_confidence: number
+  unadjusted_signal_score: number
+  score_basis: 'heuristic_signal_discounted_for_sample_size'
   vulnerability_score: number
   vulnerability_label: 'Stable' | 'Sensitive' | 'Vulnerable' | 'Critical'
   component_scores: {
@@ -477,6 +532,10 @@ export interface RouteCompetition {
   dominant_carrier: string
   dominant_share: number
   hhi: number
+  concentration_measure: 'observation_share_hhi_proxy'
+  market_share_data_available: false
+  threshold_basis: 'team_defined_monitoring_bands'
+  fare_pressure_basis: 'route_average_fare_vs_cross_route_median'
   avg_fare: number
   fare_pressure: 'Low' | 'Moderate' | 'High'
   status: 'Healthy' | 'Watch' | 'High Risk'
@@ -508,6 +567,7 @@ export type FairnessCategory =
 export interface FairnessCategoryRow {
   category: FairnessCategory
   description: string
+  category_definition_basis: 'team_authored_prototype_route_tags'
   route_count: number
   observation_count: number
   avg_fare: number | null
@@ -522,6 +582,8 @@ export interface FairnessCategoryRow {
   index_period_start: string | null
   index_period_end: string | null
   index_quality_flag: 'GREEN' | 'AMBER' | 'RED' | null
+  index_aggregation_method: IndexPoint['aggregation_method'] | null
+  index_weighting_complete: boolean
   pressure_method?: string
   fare_pressure: FairnessPressure | null
   routes: string[]
@@ -534,7 +596,7 @@ export interface FairnessData {
 }
 
 export const formatINR = (value: number | null | undefined) =>
-  value == null ? '—' : `₹${Math.round(value).toLocaleString('en-IN')}`
+  value == null ? '—' : `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export const formatClass = (value: string) =>
   value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())

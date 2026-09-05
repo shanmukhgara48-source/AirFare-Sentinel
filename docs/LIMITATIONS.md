@@ -42,10 +42,11 @@ would require licensed coverage and scheduled collection.
 
 ## Methodological assumptions
 
-### 4. Fixed base period (no chain linking)
+### 4. Per-cell first-observation bases (no chain linking)
 
-The index uses a fixed base period (the first observation date in the dataset).
-There is no annual chain linking or base-year rotation.
+Each comparability cell uses its own first observed period as its reference.
+There is no common national base-period price set, annual chain linking, or
+base-year rotation.
 
 **Impact:** Over long periods, the fixed-base Laspeyres index has a known
 upward substitution bias — passengers shift to cheaper options, but the index
@@ -63,11 +64,13 @@ bookings relative to actual passenger behaviour. Production would derive
 sub-route weights from booking data.
 
 Routes outside the 14-route prototype basket have no fixed headline weight.
-If a selection contains only such routes, the engine falls back to the
-unweighted Jevons aggregate; in a mixed selection they remain visible in route,
-alert, and fairness outputs but contribute zero to the weighted headline and
-Passenger Exposure Proxy. The proxy contains no passenger counts, bookings,
-load factors, or measured harm. Production must assign reviewed route weights before
+If a selection contains only such routes, the engine exposes an explicitly
+labelled unweighted Jevons fallback. In a mixed selection it exposes a partial
+prototype-weight subset. Either condition forces RED quality and suppresses
+weighted publication. Unknown routes remain visible in route, alert, and
+fairness outputs; Passenger Exposure Proxy is reported as unavailable rather
+than as zero. The proxy contains no passenger counts, bookings, load factors,
+or measured harm. Production must assign reviewed route weights before
 publishing those routes in a national index.
 
 ### 6. No seasonal adjustment
@@ -194,7 +197,7 @@ requirements remain unmet.
 
 - A **methodology demonstration** — showing that the Laspeyres/Jevons approach
   works for airfares
-- A **working software system** — 26 API endpoints, 10 frontend routes, 468 tests plus 33 subtests
+- A **working software system** — documented API endpoints, 10 frontend routes, and focused automated tests
 - A **statistical prototype** — transparent and reproducible, with calculation
   metadata but without an immutable audit log
 

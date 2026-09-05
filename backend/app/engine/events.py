@@ -1,10 +1,9 @@
 """
 Festival / Event Sensitivity Layer.
 
-⚠ DEMO DATA — All events and typical-surge estimates listed here are
-illustrative. They are derived from publicly known Indian holiday calendars
-and rough historical airline-pricing patterns. Do NOT treat them as an
-authoritative schedule or a regulatory finding. Event dates are expressed
+DEMO DATA — All events and typical-surge estimates listed here are
+team-authored illustrative assumptions. They are not a cited, year-aware
+calendar, a fitted model, or a regulatory finding. Event dates are expressed
 as month-day (MM-DD) ranges and repeat year-over-year, which is an
 approximation — actual festival dates shift annually.
 

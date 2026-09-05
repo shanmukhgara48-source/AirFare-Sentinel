@@ -86,12 +86,12 @@ class AmadeusProvider(FareProvider):
             "provider": self.name,
             "configured": True,
             "requires_credentials": True,
-            "data_freshness": "live",
+            "data_freshness": "not_fetched",
             "source_type": "live",
             "base_url": settings.amadeus_base_url,
             "message": "Amadeus provider is configured and ready to fetch live fare quotes.",
             "disclaimer": (
-                "Live fare data is sourced from the Amadeus test environment. "
+                "When a fetch succeeds, quote snapshots are sourced from the Amadeus test environment. "
                 "Coverage of Indian domestic routes is limited in the test environment. "
                 "Fares are indicative and may not represent all carriers or routes."
             ),
@@ -121,15 +121,19 @@ class AmadeusProvider(FareProvider):
             with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
                 body = json.loads(resp.read())
         except Exception as exc:
-            # Never log the client_secret — log only the error type.
+            # Never log credential material, including partial client IDs.
             logger.error(
-                "Amadeus token fetch failed (client_id=%s***): %s",
-                settings.amadeus_client_id[:4] if settings.amadeus_client_id else "",
+                "Amadeus token fetch failed: %s",
                 type(exc).__name__,
             )
             raise ProviderError(f"Amadeus authentication failed: {type(exc).__name__}") from exc
 
-        self._token = body["access_token"]
+        access_token = body.get("access_token") if isinstance(body, dict) else None
+        if not isinstance(access_token, str) or not access_token.strip():
+            raise ProviderError(
+                "Amadeus authentication returned no usable access token."
+            )
+        self._token = access_token
         self._token_expiry = time.time() + body.get("expires_in", 1799)
         logger.info("Amadeus token refreshed, expires in %ss", body.get("expires_in", 1799))
         return self._token

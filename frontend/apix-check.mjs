@@ -40,6 +40,15 @@ async function step(name, action) {
 }
 
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+try {
+  const response = await context.request.get(baseUrl)
+  if (!response.ok()) throw new Error(`frontend returned HTTP ${response.status()}`)
+} catch (error) {
+  console.error(`FAIL: smoke-test preflight could not reach ${baseUrl}: ${error.message}`)
+  await context.close()
+  await browser.close()
+  process.exit(1)
+}
 await context.addInitScript(() => {
   if (localStorage.getItem('apix_judge_mode') === null) {
     localStorage.setItem('apix_judge_mode', 'false')
@@ -48,12 +57,19 @@ await context.addInitScript(() => {
 const page = await context.newPage()
 monitor(page, 'interaction')
 
+const runtime = await (await context.request.get(`${baseUrl}/api/version`)).json()
+if (runtime.demo_mode !== true || runtime.live_only) {
+  await browser.close()
+  throw new Error('This destructive demo suite requires an isolated DEMO_MODE=true, LIVE_ONLY=false server.')
+}
+
 await step('start-judge-demo', async () => {
   const cleared = await context.request.delete(`${baseUrl}/api/admin/data`)
   if (!cleared.ok()) throw new Error(`clear-data returned ${cleared.status()}`)
   await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' })
   await page.getByRole('heading', { name: 'No data loaded yet' }).waitFor()
   await page.getByRole('button', { name: 'Start Judge Demo' }).click()
+  await page.locator('.overview-analysis > summary').click()
   await page.getByRole('heading', { name: 'Experimental Basket Indicator' }).waitFor({ timeout: 30000 })
   await page.getByTestId('publication-gate').waitFor()
 })
@@ -71,7 +87,7 @@ await step('judge-mode-toggle', async () => {
 })
 
 await step('overview-filter', async () => {
-  const routeSelect = page.getByLabel('Route').first()
+  const routeSelect = page.locator('.overview-filters').getByLabel('Route').first()
   const routeValue = await routeSelect.locator('option').nth(1).getAttribute('value')
   if (!routeValue) throw new Error('No route option available')
   const response = page.waitForResponse((r) => r.url().includes('/api/trends') && r.status() === 200)
@@ -101,7 +117,7 @@ await step('case-file', async () => {
 await step('competition-drawer', async () => {
   await page.goto(`${baseUrl}/competition`, { waitUntil: 'networkidle' })
   await page.getByRole('heading', { name: 'Route Competition Monitor' }).waitFor()
-  await page.locator('tbody tr').first().click()
+  await page.getByRole('button', { name: 'Details' }).first().click()
   const dialog = page.getByRole('dialog')
   await dialog.waitFor()
   await page.keyboard.press('Escape')
@@ -149,7 +165,7 @@ await step('what-if-sliders', async () => {
   await page.getByText('Uncalibrated illustrative model.', { exact: true }).waitFor()
 })
 
-await page.evaluate(() => localStorage.setItem('apix_judge_mode', 'true'))
+await context.addInitScript(() => localStorage.setItem('apix_judge_mode', 'true'))
 for (const [path, name] of routes) {
   await step(`${name}-judge-route`, async () => {
     await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle' })

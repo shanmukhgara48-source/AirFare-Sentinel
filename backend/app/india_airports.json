@@ -1,0 +1,698 @@
+{
+  "AGR": {
+    "city": "Agra",
+    "name": "Agra Airport / Agra Air Force Station",
+    "lat": 27.157975,
+    "lon": 77.961025
+  },
+  "AGX": {
+    "city": "Agatti",
+    "name": "Agatti Airport",
+    "lat": 10.8237,
+    "lon": 72.176003
+  },
+  "AHA": {
+    "city": "Ambikapur",
+    "name": "Maa Mahamaya Airport",
+    "lat": 22.98753,
+    "lon": 83.19612
+  },
+  "AIP": {
+    "city": "Adampur",
+    "name": "Adampur Airport",
+    "lat": 31.4338,
+    "lon": 75.758797
+  },
+  "AJL": {
+    "city": "Aizawl (Lengpui)",
+    "name": "Lengpui Airport",
+    "lat": 23.840599,
+    "lon": 92.619698
+  },
+  "AMD": {
+    "city": "Ahmedabad",
+    "name": "Sardar Vallabh Patel International Airport",
+    "lat": 23.0772,
+    "lon": 72.634697
+  },
+  "ATQ": {
+    "city": "Amritsar",
+    "name": "Sri Guru Ram Das Ji International Airport",
+    "lat": 31.7096,
+    "lon": 74.797302
+  },
+  "AVR": {
+    "city": "Amravati",
+    "name": "Amravati  Airport",
+    "lat": 20.814608,
+    "lon": 77.717765
+  },
+  "AYJ": {
+    "city": "Faizabad",
+    "name": "Maharshi Valmiki International Airport",
+    "lat": 26.747736,
+    "lon": 82.163664
+  },
+  "BBI": {
+    "city": "Bhubaneswar",
+    "name": "Biju Patnaik International Airport",
+    "lat": 20.251021,
+    "lon": 85.814747
+  },
+  "BDQ": {
+    "city": "Vadodara",
+    "name": "Vadodara International Airport",
+    "lat": 22.336201,
+    "lon": 73.226303
+  },
+  "BEK": {
+    "city": "Bareilly",
+    "name": "Bareilly Air Force Station",
+    "lat": 28.4221,
+    "lon": 79.450798
+  },
+  "BHJ": {
+    "city": "Bhuj",
+    "name": "Bhuj Airport",
+    "lat": 23.2877998352,
+    "lon": 69.6701965332
+  },
+  "BHO": {
+    "city": "Bhopal",
+    "name": "Raja Bhoj International Airport",
+    "lat": 23.2875,
+    "lon": 77.337402
+  },
+  "BHU": {
+    "city": "Bhavnagar",
+    "name": "Bhavnagar Airport",
+    "lat": 21.752199173,
+    "lon": 72.1852035522
+  },
+  "BLR": {
+    "city": "Bengaluru",
+    "name": "Kempegowda International Airport Bengaluru",
+    "lat": 13.1979,
+    "lon": 77.706299
+  },
+  "BOM": {
+    "city": "Mumbai",
+    "name": "Chhatrapati Shivaji Maharaj International Airport",
+    "lat": 19.088699,
+    "lon": 72.867897
+  },
+  "CCJ": {
+    "city": "Calicut",
+    "name": "Calicut International Airport",
+    "lat": 11.135996,
+    "lon": 75.955152
+  },
+  "CCU": {
+    "city": "Kolkata",
+    "name": "Netaji Subhash Chandra Bose International Airport",
+    "lat": 22.654012,
+    "lon": 88.44765
+  },
+  "CDP": {
+    "city": "Kadapa",
+    "name": "Kadapa Airport",
+    "lat": 14.513154,
+    "lon": 78.769183
+  },
+  "CJB": {
+    "city": "Coimbatore",
+    "name": "Coimbatore International Airport",
+    "lat": 11.03,
+    "lon": 77.043404
+  },
+  "CNN": {
+    "city": "Kannur",
+    "name": "Kannur International Airport",
+    "lat": 11.916343,
+    "lon": 75.544979
+  },
+  "COK": {
+    "city": "Kochi",
+    "name": "Cochin International Airport",
+    "lat": 10.151047,
+    "lon": 76.400838
+  },
+  "DBR": {
+    "city": "Darbhanga",
+    "name": "Darbhanga Airport",
+    "lat": 26.192801,
+    "lon": 85.916901
+  },
+  "DED": {
+    "city": "Dehradun (Jauligrant)",
+    "name": "Dehradun Jolly Grant Airport",
+    "lat": 30.189243,
+    "lon": 78.176651
+  },
+  "DEL": {
+    "city": "New Delhi",
+    "name": "Indira Gandhi International Airport",
+    "lat": 28.55563,
+    "lon": 77.09519
+  },
+  "DGH": {
+    "city": "Deoghar",
+    "name": "Deoghar Airport",
+    "lat": 24.446842,
+    "lon": 86.704955
+  },
+  "DHM": {
+    "city": "Kangra",
+    "name": "Kangra Airport",
+    "lat": 32.164902,
+    "lon": 76.263018
+  },
+  "DIB": {
+    "city": "Dibrugarh",
+    "name": "Dibrugarh Airport",
+    "lat": 27.4839000702,
+    "lon": 95.0168991089
+  },
+  "DIU": {
+    "city": "Diu",
+    "name": "Diu Airport",
+    "lat": 20.714185,
+    "lon": 70.921855
+  },
+  "DMU": {
+    "city": "Dimapur",
+    "name": "Dimapur Airport",
+    "lat": 25.883899688699998,
+    "lon": 93.77110290530001
+  },
+  "DXN": {
+    "city": "Gautam Buddha Nagar",
+    "name": "Noida International Airport",
+    "lat": 28.179868,
+    "lon": 77.611843
+  },
+  "GAU": {
+    "city": "Guwahati",
+    "name": "Lokpriya Gopinath Bordoloi International Airport",
+    "lat": 26.106654,
+    "lon": 91.585226
+  },
+  "GAY": {
+    "city": "Gaya",
+    "name": "Gaya Airport",
+    "lat": 24.744301,
+    "lon": 84.951202
+  },
+  "GBI": {
+    "city": "Kalaburagi",
+    "name": "Kalaburagi Airport",
+    "lat": 17.308154,
+    "lon": 76.965246
+  },
+  "GDB": {
+    "city": "Gondia",
+    "name": "Gondia Airport",
+    "lat": 21.526817,
+    "lon": 80.290347
+  },
+  "GOI": {
+    "city": "Vasco da Gama",
+    "name": "Goa Dabolim International Airport",
+    "lat": 15.380062,
+    "lon": 73.833328
+  },
+  "GOP": {
+    "city": "Gorakhpur",
+    "name": "Gorakhpur Airport",
+    "lat": 26.739700317399997,
+    "lon": 83.4496994019
+  },
+  "GOX": {
+    "city": "Mopa",
+    "name": "Manohar International Airport",
+    "lat": 15.744257,
+    "lon": 73.860625
+  },
+  "GWL": {
+    "city": "Gwalior",
+    "name": "Gwalior Airport",
+    "lat": 26.29330062866211,
+    "lon": 78.22779846191406
+  },
+  "HBX": {
+    "city": "Hubballi",
+    "name": "Hubballi Airport",
+    "lat": 15.361084,
+    "lon": 75.082096
+  },
+  "HDO": {
+    "city": "Ghaziabad",
+    "name": "Hindon Airport / Hindon Air Force Station",
+    "lat": 28.707701,
+    "lon": 77.358902
+  },
+  "HGI": {
+    "city": "Hollongi",
+    "name": "Itanagar Donyi Polo Hollongi Airport",
+    "lat": 26.96683,
+    "lon": 93.638792
+  },
+  "HJR": {
+    "city": "Khajuraho",
+    "name": "Khajuraho Airport",
+    "lat": 24.8172,
+    "lon": 79.918602
+  },
+  "HSR": {
+    "city": "Rajkot",
+    "name": "Rajkot International Airport",
+    "lat": 22.378824,
+    "lon": 71.039391
+  },
+  "HSS": {
+    "city": "Hisar",
+    "name": "Maharaja Agrasen International Airport",
+    "lat": 29.186065,
+    "lon": 75.74142
+  },
+  "HWR": {
+    "city": "Halwara",
+    "name": "Halwara International Airport",
+    "lat": 30.748501,
+    "lon": 75.629799
+  },
+  "HYD": {
+    "city": "Hyderabad",
+    "name": "Rajiv Gandhi International Airport",
+    "lat": 17.231318,
+    "lon": 78.429855
+  },
+  "IDR": {
+    "city": "Indore",
+    "name": "Devi Ahilya Bai Holkar International Airport",
+    "lat": 22.721404,
+    "lon": 75.80051
+  },
+  "IMF": {
+    "city": "Imphal",
+    "name": "Bir Tikendrajit International Airport",
+    "lat": 24.76,
+    "lon": 93.896698
+  },
+  "ISK": {
+    "city": "Nashik",
+    "name": "Nashik International Airport",
+    "lat": 20.119101,
+    "lon": 73.912903
+  },
+  "IXA": {
+    "city": "Agartala",
+    "name": "Agartala - Maharaja Bir Bikram Airport",
+    "lat": 23.886999,
+    "lon": 91.240402
+  },
+  "IXB": {
+    "city": "Siliguri",
+    "name": "Bagdogra Airport",
+    "lat": 26.6812,
+    "lon": 88.328598
+  },
+  "IXC": {
+    "city": "Chandigarh",
+    "name": "Shaheed Bhagat Singh International Airport",
+    "lat": 30.6735,
+    "lon": 76.788498
+  },
+  "IXD": {
+    "city": "Allahabad",
+    "name": "Prayagraj Airport",
+    "lat": 25.4401,
+    "lon": 81.733902
+  },
+  "IXE": {
+    "city": "Mangaluru",
+    "name": "Mangaluru International Airport",
+    "lat": 12.95471,
+    "lon": 74.886812
+  },
+  "IXG": {
+    "city": "Belgaum",
+    "name": "Belagavi Airport",
+    "lat": 15.8593,
+    "lon": 74.618301
+  },
+  "IXI": {
+    "city": "Lilabari",
+    "name": "Lilabari North Lakhimpur Airport",
+    "lat": 27.295682,
+    "lon": 94.097266
+  },
+  "IXJ": {
+    "city": "Jammu",
+    "name": "Jammu Airport",
+    "lat": 32.688849,
+    "lon": 74.838152
+  },
+  "IXK": {
+    "city": "Keshod",
+    "name": "Keshod Airport",
+    "lat": 21.317101,
+    "lon": 70.270401
+  },
+  "IXL": {
+    "city": "Leh",
+    "name": "Leh Kushok Bakula Rimpochee Airport",
+    "lat": 34.135899,
+    "lon": 77.546501
+  },
+  "IXM": {
+    "city": "Madurai",
+    "name": "Madurai Airport",
+    "lat": 9.83450984955,
+    "lon": 78.09339904790001
+  },
+  "IXP": {
+    "city": "Pathankot",
+    "name": "Pathankot Airport",
+    "lat": 32.233611,
+    "lon": 75.634444
+  },
+  "IXR": {
+    "city": "Ranchi",
+    "name": "Birsa Munda Airport",
+    "lat": 23.314300537100003,
+    "lon": 85.3217010498
+  },
+  "IXS": {
+    "city": "Silchar",
+    "name": "Silchar Airport",
+    "lat": 24.9129009247,
+    "lon": 92.97869873050001
+  },
+  "IXU": {
+    "city": "Aurangabad",
+    "name": "Aurangabad Airport",
+    "lat": 19.862875,
+    "lon": 75.396312
+  },
+  "IXY": {
+    "city": "Kandla",
+    "name": "Kandla Airport",
+    "lat": 23.1127,
+    "lon": 70.100304
+  },
+  "IXZ": {
+    "city": "Port Blair",
+    "name": "Veer Savarkar International Airport / INS Utkrosh",
+    "lat": 11.640194,
+    "lon": 92.72902
+  },
+  "JAI": {
+    "city": "Jaipur",
+    "name": "Jaipur International Airport",
+    "lat": 26.8242,
+    "lon": 75.812202
+  },
+  "JDH": {
+    "city": "Jodhpur",
+    "name": "Jodhpur Airport",
+    "lat": 26.251100540161133,
+    "lon": 73.04889678955078
+  },
+  "JGA": {
+    "city": "Jamnagar",
+    "name": "Jamnagar Airport",
+    "lat": 22.465499877929688,
+    "lon": 70.01260375976562
+  },
+  "JGB": {
+    "city": "Jagdalpur",
+    "name": "Jagdalpur Airport",
+    "lat": 19.074301,
+    "lon": 82.036797
+  },
+  "JLG": {
+    "city": "Jalgaon",
+    "name": "Jalgaon Airport",
+    "lat": 20.962678,
+    "lon": 75.627492
+  },
+  "JLR": {
+    "city": "Jabalpur",
+    "name": "Jabalpur Airport",
+    "lat": 23.177799,
+    "lon": 80.052002
+  },
+  "JRG": {
+    "city": "Jharsuguda Airport",
+    "name": "Jharsuguda Airport",
+    "lat": 21.9135,
+    "lon": 84.0504
+  },
+  "JRH": {
+    "city": "Jorhat",
+    "name": "Jorhat Airport",
+    "lat": 26.730456,
+    "lon": 94.175416
+  },
+  "JSA": {
+    "city": "Jaisalmer Airport",
+    "name": "Jaisalmer Airport",
+    "lat": 26.8887,
+    "lon": 70.864998
+  },
+  "KJB": {
+    "city": "Orvakal",
+    "name": "Kurnool Airport",
+    "lat": 15.716288,
+    "lon": 78.16923
+  },
+  "KLH": {
+    "city": "Kolhapur",
+    "name": "Kolhapur Airport",
+    "lat": 16.6647,
+    "lon": 74.289398
+  },
+  "KNU": {
+    "city": "Kanpur",
+    "name": "Kanpur Airport",
+    "lat": 26.404301,
+    "lon": 80.410103
+  },
+  "KQH": {
+    "city": "Ajmer (Kishangarh)",
+    "name": "Kishangarh Airport Ajmer",
+    "lat": 26.591007,
+    "lon": 74.812956
+  },
+  "KUU": {
+    "city": "Bhuntar",
+    "name": "Kullu Manali Airport",
+    "lat": 31.876699,
+    "lon": 77.154404
+  },
+  "LKO": {
+    "city": "Lucknow",
+    "name": "Chaudhary Charan Singh International Airport",
+    "lat": 26.760599,
+    "lon": 80.889297
+  },
+  "LTU": {
+    "city": "Latur",
+    "name": "Murod Kond Airport",
+    "lat": 18.411501,
+    "lon": 76.464699
+  },
+  "MAA": {
+    "city": "Chennai",
+    "name": "Chennai International Airport",
+    "lat": 12.990005,
+    "lon": 80.169296
+  },
+  "MYQ": {
+    "city": "Mysore",
+    "name": "Mysore Airport",
+    "lat": 12.229751,
+    "lon": 76.653683
+  },
+  "MZS": {
+    "city": "Moradabad",
+    "name": "Moradabad Airport",
+    "lat": 28.81746,
+    "lon": 78.92187
+  },
+  "NAG": {
+    "city": "Nagpur",
+    "name": "Dr. Babasaheb Ambedkar International Airport",
+    "lat": 21.092199,
+    "lon": 79.047203
+  },
+  "NDC": {
+    "city": "Nanded",
+    "name": "Nanded Airport",
+    "lat": 19.1833,
+    "lon": 77.316704
+  },
+  "NMI": {
+    "city": "Navi Mumbai",
+    "name": "Navi Mumbai International Airport",
+    "lat": 18.984597,
+    "lon": 73.065253
+  },
+  "PAB": {
+    "city": "Bilaspur",
+    "name": "Bilaspur Airport",
+    "lat": 21.9884,
+    "lon": 82.111
+  },
+  "PAT": {
+    "city": "Patna",
+    "name": "Jay Prakash Narayan Airport",
+    "lat": 25.591299,
+    "lon": 85.087997
+  },
+  "PBD": {
+    "city": "Porbandar",
+    "name": "Porbandar Airport",
+    "lat": 21.649524,
+    "lon": 69.656405
+  },
+  "PGH": {
+    "city": "Pantnagar",
+    "name": "Pantnagar Airport",
+    "lat": 29.0334,
+    "lon": 79.473701
+  },
+  "PNQ": {
+    "city": "Pune",
+    "name": "Pune International Airport",
+    "lat": 18.5821,
+    "lon": 73.919701
+  },
+  "PNY": {
+    "city": "Puducherry (Pondicherry)",
+    "name": "Pondicherry Airport",
+    "lat": 11.968,
+    "lon": 79.812
+  },
+  "RDP": {
+    "city": "Durgapur",
+    "name": "Kazi Nazrul Islam Airport",
+    "lat": 23.6225,
+    "lon": 87.243
+  },
+  "REW": {
+    "city": "Rewa",
+    "name": "Rewa Airport, Chorhata, REWA",
+    "lat": 24.503401,
+    "lon": 81.220299
+  },
+  "RJA": {
+    "city": "Madhurapudi",
+    "name": "Rajahmundry Airport",
+    "lat": 17.105799,
+    "lon": 81.813204
+  },
+  "RPR": {
+    "city": "Raipur",
+    "name": "Swami Vivekananda Airport",
+    "lat": 21.180401,
+    "lon": 81.7388
+  },
+  "SAG": {
+    "city": "Kakadi",
+    "name": "Shirdi International Airport",
+    "lat": 19.689211,
+    "lon": 74.373655
+  },
+  "SDW": {
+    "city": "Chipi",
+    "name": "Sindhudurg Airport",
+    "lat": 16.002552,
+    "lon": 73.529846
+  },
+  "SHL": {
+    "city": "Shillong",
+    "name": "Shillong Airport",
+    "lat": 25.70359992980957,
+    "lon": 91.97869873046875
+  },
+  "STV": {
+    "city": "Surat",
+    "name": "Surat International Airport",
+    "lat": 21.115531,
+    "lon": 72.743251
+  },
+  "SXR": {
+    "city": "Srinagar",
+    "name": "Srinagar International Airport",
+    "lat": 33.987099,
+    "lon": 74.7742
+  },
+  "TCR": {
+    "city": "Vagaikulam",
+    "name": "Tuticorin Airport",
+    "lat": 8.724241,
+    "lon": 78.025803
+  },
+  "TEZ": {
+    "city": "Tezpur Airport",
+    "name": "Tezpur Airport",
+    "lat": 26.7091007232666,
+    "lon": 92.78469848632812
+  },
+  "TIR": {
+    "city": "Tirupati",
+    "name": "Tirupati International Airport",
+    "lat": 13.631988,
+    "lon": 79.539869
+  },
+  "TRV": {
+    "city": "Thiruvananthapuram",
+    "name": "Thiruvananthapuram International Airport",
+    "lat": 8.481889,
+    "lon": 76.920029
+  },
+  "TRZ": {
+    "city": "Tiruchirappalli",
+    "name": "Tiruchirappalli International Airport",
+    "lat": 10.762915,
+    "lon": 78.717741
+  },
+  "UDR": {
+    "city": "Udaipur",
+    "name": "Maharana Pratap Airport",
+    "lat": 24.617700576799997,
+    "lon": 73.89610290530001
+  },
+  "UKE": {
+    "city": "Bhawanipatna",
+    "name": "Utkela Airport",
+    "lat": 20.097778,
+    "lon": 83.183333
+  },
+  "VGA": {
+    "city": "Vijayawada",
+    "name": "Vijayawada International Airport",
+    "lat": 16.530011,
+    "lon": 80.804888
+  },
+  "VNS": {
+    "city": "Varanasi",
+    "name": "Lal Bahadur Shastri International Airport",
+    "lat": 25.452171,
+    "lon": 82.862549
+  },
+  "VSV": {
+    "city": "Shravasti",
+    "name": "Shravasti Airport",
+    "lat": 27.499732,
+    "lon": 82.032927
+  },
+  "VTZ": {
+    "city": "Visakhapatnam",
+    "name": "Alluri Sitarama Raju International Airport (Vizag)",
+    "lat": 17.971512,
+    "lon": 83.503617
+  }
+}

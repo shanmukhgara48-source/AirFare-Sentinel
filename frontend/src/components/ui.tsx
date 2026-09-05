@@ -16,11 +16,11 @@ export function Card({
 }) {
   return (
     <section
-      className={`min-w-0 overflow-hidden rounded-lg border border-line bg-surface shadow-[0_1px_3px_rgba(15,27,42,0.06)] ${className}`}
+      className={`dashboard-card min-w-0 overflow-hidden rounded-lg border border-line bg-surface ${className}`}
     >
       {(title || action) && (
-        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-3.5" style={{ background: 'rgba(240,243,247,0.5)' }}>
-          <div>
+        <header className="dashboard-card-header flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
+          <div className="min-w-0 flex-1">
             {title && <h2 className="text-[13px] font-semibold tracking-tight text-ink">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-[11.5px] text-muted leading-relaxed">{subtitle}</p>}
           </div>
@@ -49,7 +49,7 @@ export function StatTile({
     tone === 'ok'    ? '#15803d' : undefined
 
   return (
-    <div className="relative rounded-lg border border-line bg-surface px-5 py-4 overflow-hidden">
+    <div className="stat-tile relative rounded-lg border border-line bg-surface px-5 py-4 overflow-hidden">
       {accentColor && (
         <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: accentColor }} />
       )}
@@ -57,7 +57,7 @@ export function StatTile({
         {label}
       </div>
       <div
-        className={`mt-2 font-serif text-[28px] leading-none tnum ${
+        className={`stat-value mt-2 text-[30px] leading-none tnum ${
           tone === 'alert' ? 'text-alert' :
           tone === 'warn'  ? 'text-warn'  :
           tone === 'ok'    ? 'text-ok'    : 'text-ink'
@@ -82,7 +82,7 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 }
 
 const controlClass =
-  'h-9 rounded-md border border-line bg-surface px-2.5 text-[13px] text-ink outline-none ' +
+  'min-w-0 w-full h-10 rounded-md border border-line bg-surface px-2.5 text-[13px] text-ink outline-none ' +
   'focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20'
 
 export function Select({
@@ -155,7 +155,7 @@ export function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex h-9 items-center gap-2 rounded-md border px-3.5 text-[13px] font-medium
+      className={`dashboard-button inline-flex min-h-10 items-center justify-center gap-2 rounded-md border px-3.5 text-[13px] font-medium
         transition-colors disabled:cursor-not-allowed disabled:opacity-45
         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${styles}`}
     >
@@ -209,7 +209,7 @@ export function Delta({ value, suffix = '' }: { value: number | null; suffix?: s
 
 export function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-line bg-surface px-6 py-16 text-center">
+    <div className="dashboard-empty flex flex-col items-center justify-center rounded-lg border border-dashed border-line bg-surface px-6 py-16 text-center">
       <h3 className="font-serif text-[19px]">{title}</h3>
       <p className="mt-2 max-w-md text-[13px] leading-relaxed text-muted">{body}</p>
       {action && <div className="mt-5">{action}</div>}
@@ -219,8 +219,15 @@ export function EmptyState({ title, body, action }: { title: string; body: strin
 
 export function Spinner({ label = 'Loading' }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-2.5 py-16 text-[13px] text-muted">
-      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-line border-t-accent" />
+    <div
+      className="flex items-center justify-center gap-2.5 py-16 text-[13px] text-muted"
+      role="status"
+      aria-live="polite"
+    >
+      <span
+        className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-line border-t-accent"
+        aria-hidden="true"
+      />
       {label}…
     </div>
   )
@@ -228,7 +235,10 @@ export function Spinner({ label = 'Loading' }: { label?: string }) {
 
 export function ErrorNote({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-[#f4d3c2] bg-[#fdf0ea] px-4 py-3 text-[13px] text-alert">
+    <div
+      className="rounded-md border border-[#f4d3c2] bg-[#fdf0ea] px-4 py-3 text-[13px] text-alert"
+      role="alert"
+    >
       {message}
     </div>
   )
@@ -273,7 +283,9 @@ export function EvidenceTag({
   return (
     <div>
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o) }}
+        aria-expanded={open}
         className="inline-flex items-center gap-1 rounded border border-line bg-ground px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted hover:border-accent hover:text-accent transition-colors"
         title="Show evidence trail for this metric"
       >
@@ -286,11 +298,11 @@ export function EvidenceTag({
         <div className="mt-2 rounded-md border border-line bg-ground/70 px-3.5 py-3">
           <div className="space-y-1.5">
             {items.map((item) => (
-              <div key={item.label} className="flex gap-3 text-[11px]">
+              <div key={item.label} className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
                 <span className="w-32 shrink-0 text-[10px] font-semibold uppercase tracking-[0.07em] text-muted leading-relaxed">
                   {item.label}
                 </span>
-                <span className={`leading-relaxed ${item.mono ? 'font-mono text-[10.5px] text-ink' : 'text-ink'}`}>
+                <span className={`min-w-0 break-words [overflow-wrap:anywhere] leading-relaxed ${item.mono ? 'font-mono text-[10.5px] text-ink' : 'text-ink'}`}>
                   {item.value}
                 </span>
               </div>

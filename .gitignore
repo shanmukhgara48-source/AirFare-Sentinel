@@ -5,6 +5,8 @@ __pycache__/
 venv/
 *.egg-info/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
@@ -12,12 +14,17 @@ htmlcov/
 apix.db
 *.sqlite
 *.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
 
 # Node
 node_modules/
 dist/
 build/
 coverage/
+playwright-report/
+test-results/
 
 # Environment and logs
 .env
@@ -33,3 +40,9 @@ coverage/
 # IDE
 .idea/
 .vscode/
+
+# Local live snapshot database
+backend/live_airfares.db*
+
+backend/*.network.json
+backend/*.network.tmp

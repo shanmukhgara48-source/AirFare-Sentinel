@@ -78,7 +78,9 @@ def fetch_live_fares(
                 errors.append({
                     "route": route_tag,
                     "lead_days": lead_days,
-                    "error": str(exc),
+                    # Do not reflect provider exception text to clients. Future
+                    # adapters may include upstream bodies or credential data.
+                    "error": f"Provider request failed ({type(exc).__name__})",
                 })
             except Exception as exc:  # noqa: BLE001 — isolate per-route failures
                 log.error(

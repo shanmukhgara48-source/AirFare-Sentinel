@@ -23,6 +23,7 @@ import math
 import statistics
 from collections import defaultdict
 
+from app.engine.events import tag_event
 from app.model import ROUTE_BASKET, cell_key, lead_bucket_label, route_weight
 
 THRESHOLD = 3.5
@@ -56,15 +57,6 @@ def classify_confidence(cell_observations: int) -> str:
 # Deterministic rules evaluated in priority order. Each rule inspects the
 # observation and its cell context — no ML, no black boxes, fully reproducible.
 
-# Festive date ranges that produce predictable surges.
-FESTIVAL_WINDOWS = [
-    # (start, end, label)
-    ("10-17", "10-27", "Diwali/Dussehra"),
-    ("12-20", "12-31", "Christmas/New Year"),
-    ("03-25", "03-31", "Holi"),
-    ("08-10", "08-20", "Independence Day"),
-]
-
 REASON_GLOSSARY = {
     "LEAD_TIME_SURGE": "Flagged observation is in the 0–3 day booking bucket; this is context, not a causal finding.",
     "FESTIVAL_PATTERN": "Travel date overlaps an approximate recurring demo event window; route relevance and causality are unverified.",
@@ -74,16 +66,6 @@ REASON_GLOSSARY = {
     "FARE_DROP_OUTLIER": "Fare is significantly below its cell median — possible promotional pricing or data error.",
     "LOW_COVERAGE_WARNING": "Cell has fewer than 15 observations; the statistical baseline may be unreliable.",
 }
-
-
-def _is_festival_travel(travel_date: str) -> str | None:
-    """Return festival label if travel_date falls in a festive window, else None."""
-    md = travel_date[5:]  # "YYYY-MM-DD" → "MM-DD"
-    for start, end, label in FESTIVAL_WINDOWS:
-        if start <= md <= end:
-            return label
-    return None
-
 
 def assign_reason_code(
     spike: dict,
@@ -110,8 +92,9 @@ def assign_reason_code(
     if spike["lead_bucket"] == "D00_03":
         return "LEAD_TIME_SURGE"
 
-    # 4. Festive travel dates.
-    if _is_festival_travel(spike["travel_date"]):
+    # 4. Team-authored illustrative event windows.  Reuse the event engine so
+    # Case File reason codes cannot drift from the Event Sensitivity view.
+    if tag_event(spike["travel_date"]):
         return "FESTIVAL_PATTERN"
 
     # 5. Carrier-specific: only this carrier is spiking on the route.
@@ -138,7 +121,7 @@ def explain_spike(spike: dict) -> str:
         f"{abs(spike['pct_above_median']):.0f}% {direction_word} the cell median of "
         f"₹{round(spike['cell_median_fare']):,}. "
         f"Its robust z-score of {spike['robust_z']:+.1f} "
-        f"places it {abs(spike['robust_z']):.1f} standard deviations {verb} "
+        f"places it {abs(spike['robust_z']):.1f} robust standardized units {verb} "
         f"than typical fares in this cell ({spike['cell_observations']} observations)."
     )
 
@@ -173,11 +156,11 @@ def recommend_action(severity: str, direction: str) -> str:
 # Not an exact passenger count — clearly labelled as such in the UI.
 
 LEAD_URGENCY: dict[str, float] = {
-    "D00_03": 1.5,   # Last minute — travellers cannot easily switch
+    "D00_03": 1.5,   # Team-defined monitoring priority for last-minute quotes
     "D04_07": 1.2,
     "D08_14": 1.0,
     "D15_30": 0.8,
-    "D31_PLUS": 0.6,  # Plenty of time to shop around
+    "D31_PLUS": 0.6,  # Lower monitoring priority for advance quotes
 }
 
 _SEVERITY_FACTOR: dict[str, float] = {
@@ -286,7 +269,8 @@ def detect_spikes(
 
         for row in rows:
             # 0.6745 = 1/Φ⁻¹(0.75): MAD-to-σ conversion for normal distribution
-            # (monograph §22.2). Normalises the z-score so it reads like standard deviations.
+            # (monograph §22.2). Produces a robust standardized distance; it is
+            # not an ordinary sample standard-deviation count.
             z = 0.6745 * (math.log(row["total_fare"]) - median_log) / mad
             pct = 100 * (row["total_fare"] - median_fare) / median_fare
             if abs(z) <= threshold or abs(pct) < min_pct_deviation:
@@ -302,6 +286,9 @@ def detect_spikes(
                 lead_bucket=row["lead_bucket"],
                 severity=sev,
                 confidence=conf,
+            )
+            exposure_available = (
+                route_weight(row["origin"], row["destination"]) > 0
             )
             source_type = row.get("source_type", "imported")
             provider = row.get("provider")
@@ -330,6 +317,12 @@ def detect_spikes(
                 "severity": sev,
                 "confidence": conf,
                 "exposure_proxy": exposure,
+                "exposure_proxy_available": exposure_available,
+                "exposure_proxy_basis": (
+                    "illustrative_route_weight"
+                    if exposure_available
+                    else "unavailable_no_prototype_route_weight"
+                ),
                 "impact_score": exposure,  # deprecated API alias
                 "source_batch_id": row.get("source_batch_id"),
                 "source_type": source_type,

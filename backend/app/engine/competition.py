@@ -21,7 +21,7 @@ dominant_carrier : str
     Airline with the largest share of observations on the route.
 
 dominant_share : float  (0–1)
-    Fraction of observations held by the dominant carrier.
+    Fraction of observations belonging to the most-observed carrier.
 
 fare_pressure : "Low" | "Moderate" | "High"
     Whether average fares on this route sit below (Low), near (Moderate), or
@@ -38,11 +38,13 @@ How status is derived (plain English)
 We count how many distinct carriers have priced a fare on this route in the
 observation window and compute the Herfindahl-Hirschman Index — the sum of
 squared observation-share fractions.  An HHI near 0.25 means four carriers
-each hold roughly 25 % of the fare observations (competitive); an HHI of 1.0
-means a single carrier holds everything (monopoly signal).
+each supply roughly 25 % of captured fare observations; a value of 1.0 means
+all captured observations came from one carrier. Neither result establishes
+actual competition or monopoly because market shares are absent.
 
   Healthy  — at least three carriers and HHI below 0.35, meaning no single
-             player dominates.  Standard competitive conditions.
+             observation supplier dominates the captured rows. This is not a
+             conclusion about competitive conditions.
 
   Watch    — exactly two carriers present, OR HHI is between 0.35 and 0.60.
              One carrier likely holds a majority.  Worth monitoring.
@@ -131,6 +133,10 @@ def compute_route_competition(observations: list[dict]) -> list[dict]:
             "route": route_key,
             "origin": origin,
             "destination": destination,
+            "concentration_measure": "observation_share_hhi_proxy",
+            "market_share_data_available": False,
+            "threshold_basis": "team_defined_monitoring_bands",
+            "fare_pressure_basis": "route_average_fare_vs_cross_route_median",
             "carrier_count": carrier_count,
             "carriers": sorted(carrier_obs.keys()),
             "dominant_carrier": dominant_carrier,

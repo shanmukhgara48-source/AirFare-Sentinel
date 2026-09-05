@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, formatINR, type RouteCompetition } from '../api'
 import { Card, EmptyState, ErrorNote, JudgePanel, Pill, Spinner, StatTile } from '../components/ui'
+import { useDialogFocus } from '../components/useDialogFocus'
 import { useJudgeMode } from '../context/judgeModeContext'
 
 // ─── Tone helpers ─────────────────────────────────────────────────────────────
@@ -18,7 +19,7 @@ function pressureTone(p: RouteCompetition['fare_pressure']): 'ok' | 'neutral' | 
 }
 
 function HhiBar({ hhi }: { hhi: number }) {
-  // 0 = fully competitive, 1 = monopoly
+  // Mathematical range only; observation shares are not market shares.
   const pct = Math.round(hhi * 100)
   const color =
     hhi >= 0.60 ? '#e05c3a' : hhi >= 0.35 ? '#d48a11' : '#2a9174'
@@ -43,12 +44,15 @@ function RouteDrawer({
   dataSource: string
   onClose: () => void
 }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>()
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[8vh]">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="competition-route-title"
+        tabIndex={-1}
         className="w-full max-w-[620px] rounded-lg border border-line bg-white shadow-xl"
       >
         <header className="flex items-start justify-between border-b border-line px-6 py-4">
@@ -64,6 +68,7 @@ function RouteDrawer({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="ml-4 rounded-md p-1.5 text-muted hover:bg-ground hover:text-ink transition-colors"
             aria-label="Close"
@@ -78,12 +83,12 @@ function RouteDrawer({
           {/* Key metrics grid */}
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-3">
             {[
-              { label: 'Active carriers', value: String(route.carrier_count) },
-              { label: 'HHI (concentration)', value: route.hhi.toFixed(3) },
-              { label: 'Dominant carrier', value: route.dominant_carrier, mono: true },
-              { label: 'Dominant share', value: `${(route.dominant_share * 100).toFixed(1)}%` },
+              { label: 'Observed carriers', value: String(route.carrier_count) },
+              { label: 'Observation-share proxy', value: route.hhi.toFixed(3) },
+              { label: 'Most-observed carrier', value: route.dominant_carrier, mono: true },
+              { label: 'Largest observation share', value: `${(route.dominant_share * 100).toFixed(1)}%` },
               { label: 'Avg fare', value: formatINR(route.avg_fare) },
-              { label: 'Fare pressure', value: route.fare_pressure },
+              { label: 'Raw fare-level band', value: route.fare_pressure },
             ].map((m) => (
               <div key={m.label} className="bg-surface px-4 py-2.5">
                 <div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-muted">{m.label}</div>
@@ -106,7 +111,7 @@ function RouteDrawer({
                       {carrier}
                     </span>
                     {isDominant && (
-                      <Pill tone="accent">dominant</Pill>
+                      <Pill tone="accent">most observed</Pill>
                     )}
                   </div>
                 )
@@ -125,7 +130,8 @@ function RouteDrawer({
                   This route has <strong>{route.carrier_count} active carriers</strong> and
                   an HHI of <strong>{route.hhi.toFixed(3)}</strong> — below the 0.35 watch
                   threshold. Fare observations are distributed across multiple carriers with
-                  no single dominant player. Standard competitive conditions.
+                  observations spread across the carriers captured in this dataset. This is
+                  not evidence about actual competitive conditions.
                 </>
               )}
               {route.status === 'Watch' && (
@@ -134,7 +140,7 @@ function RouteDrawer({
                   an HHI of <strong>{route.hhi.toFixed(3)}</strong>.{' '}
                   {route.carrier_count === 2
                     ? 'A two-carrier market limits the scope for competitive price pressure.'
-                    : 'The HHI is in the 0.35–0.60 range, suggesting one carrier holds a significant share.'}{' '}
+                    : 'The observation-share proxy is in the 0.35–0.60 prototype watch band.'}{' '}
                   Worth monitoring but not an immediate concentration signal.
                 </>
               )}
@@ -143,9 +149,9 @@ function RouteDrawer({
                   This route has <strong>{route.carrier_count} active carrier{route.carrier_count !== 1 ? 's' : ''}</strong> and
                   an HHI of <strong>{route.hhi.toFixed(3)}</strong>.{' '}
                   {route.carrier_count === 1
-                    ? 'A single carrier holds all observations on this route — a monopoly signal.'
-                    : `The HHI of ${route.hhi.toFixed(3)} is at or above the 0.60 threshold, indicating strong concentration.`}{' '}
-                  The dominant carrier (<strong>{route.dominant_carrier}</strong>) accounts
+                    ? 'Only one carrier appears in the analysed observations; market structure is not established.'
+                    : `The observation-share proxy of ${route.hhi.toFixed(3)} is at or above the 0.60 monitoring band.`}{' '}
+                  The most-observed carrier (<strong>{route.dominant_carrier}</strong>) accounts
                   for <strong>{(route.dominant_share * 100).toFixed(1)}%</strong> of observations.
                   Analyst review recommended.
                 </>
@@ -155,7 +161,7 @@ function RouteDrawer({
 
           <div className="rounded-md border border-[#f0dcbb] bg-[#fdf4e7] px-4 py-3">
             <p className="text-[11.5px] leading-relaxed text-warn/90">
-              <strong>Monitoring signal only.</strong> HHI is computed on observation counts
+              <strong>Monitoring signal only.</strong> This HHI-like proxy is computed on observation counts
               in the current dataset, not on actual market share or revenue.
               This is a concentration-risk proxy — not a legal or regulatory finding.
             </p>
@@ -222,9 +228,9 @@ export default function Competition() {
           {
             q: 'What happened?',
             a: data && !data.empty
-              ? `Of ${summary.total_routes} monitored routes, ${summary.healthy_count} are Healthy (3+ carriers, HHI < 0.35), ${summary.watch_count} are under Watch, and ${summary.high_risk_count} are flagged High Risk. ${
+              ? `Of ${summary.total_routes} monitored routes, ${summary.healthy_count} fall below the observation-proxy watch band, ${summary.watch_count} are in Watch, and ${summary.high_risk_count} are in the highest monitoring band. ${
                   summary.high_risk_count > 0
-                    ? `The ${summary.high_risk_count} High Risk route${summary.high_risk_count !== 1 ? 's' : ''} ${summary.high_risk_count !== 1 ? 'have' : 'has'} either a single carrier or a concentration index (HHI) at or above 0.60.`
+                    ? `The ${summary.high_risk_count} highest-band route${summary.high_risk_count !== 1 ? 's' : ''} ${summary.high_risk_count !== 1 ? 'have' : 'has'} either one observed carrier or an observation-share proxy at or above 0.60.`
                     : 'No routes are in the High Risk zone under the current data.'
                 }`
               : 'Loading competition data…',
@@ -259,18 +265,18 @@ export default function Competition() {
           <StatTile
             label="Healthy"
             value={summary.healthy_count}
-            hint="3+ carriers, HHI < 0.35"
+            hint="3+ observed carriers, proxy < 0.35"
           />
           <StatTile
             label="Watch"
             value={summary.watch_count}
-            hint="2 carriers or HHI 0.35–0.60"
+            hint="2 observed carriers or proxy 0.35–0.60"
             tone={summary.watch_count > 0 ? 'alert' : 'default'}
           />
           <StatTile
             label="High Risk"
             value={summary.high_risk_count}
-            hint="1 carrier or HHI ≥ 0.60"
+            hint="1 observed carrier or proxy ≥ 0.60"
             tone={summary.high_risk_count > 0 ? 'alert' : 'default'}
           />
         </div>
@@ -283,14 +289,14 @@ export default function Competition() {
             <p>
               For each route we count the number of <strong className="font-medium text-ink">distinct
               carriers</strong> that have priced a fare in the observation window, then compute
-              the <strong className="font-medium text-ink">Herfindahl-Hirschman Index (HHI)</strong> — the
+              an <strong className="font-medium text-ink">HHI-like concentration formula</strong> — the
               sum of squared observation-share fractions.
             </p>
             <p>
-              An HHI near <strong className="font-medium text-ink">0.25</strong> means four carriers
-              each hold roughly 25% of fare observations (competitive). An HHI
+              A proxy near <strong className="font-medium text-ink">0.25</strong> means four carriers
+              each hold roughly 25% of fare observations. A proxy
               of <strong className="font-medium text-ink">1.0</strong> means a single carrier holds
-              everything (monopoly signal). The metric is computed on observation counts in this
+              all observations. That describes dataset coverage, not monopoly. The metric is computed on observation counts in this
               dataset — not on actual revenue or passengers, which are unavailable.
             </p>
             <p>
@@ -311,8 +317,8 @@ export default function Competition() {
             {[
               {
                 status: 'Healthy' as const,
-                rule: 'carrier_count ≥ 3 AND HHI < 0.35',
-                desc: 'Multiple active carriers, no dominant player.',
+                rule: 'observed carriers ≥ 3 AND proxy < 0.35',
+                desc: 'Observed quotes are distributed below the prototype watch band.',
               },
               {
                 status: 'Watch' as const,
@@ -321,8 +327,8 @@ export default function Competition() {
               },
               {
                 status: 'High Risk' as const,
-                rule: 'carrier_count = 1 OR HHI ≥ 0.60',
-                desc: 'Monopoly signal or strong concentration. Analyst review recommended.',
+                rule: 'observed carriers = 1 OR proxy ≥ 0.60',
+                desc: 'Highest observation-concentration band; verify against market-share evidence.',
               },
             ].map((item) => (
               <div key={item.status} className="rounded-md border border-line px-4 py-3">
@@ -346,7 +352,9 @@ export default function Competition() {
           {(['all', 'Healthy', 'Watch', 'High Risk'] as const).map((s) => (
             <button
               key={s}
+              type="button"
               onClick={() => setFilterStatus(s)}
+              aria-pressed={filterStatus === s}
               className={`rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ${
                 filterStatus === s
                   ? 'border-accent bg-accent-soft text-accent'
@@ -375,7 +383,7 @@ export default function Competition() {
       ) : (
         <Card
           title="Route competition table"
-          subtitle="Observation-share proxy — click any row for details; sorted by proxy risk"
+          subtitle="Observation-share proxy; use Details to inspect a route; sorted by monitoring band"
         >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[800px] text-[12.5px] [&_th]:px-3 [&_td]:px-3 [&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
@@ -384,20 +392,20 @@ export default function Competition() {
                   <th className="pb-2 font-semibold">Route</th>
                   <th className="pb-2 text-center font-semibold">Status</th>
                   <th className="pb-2 text-right font-semibold">Carriers</th>
-                  <th className="pb-2 font-semibold">HHI (concentration)</th>
-                  <th className="pb-2 font-semibold">Dominant</th>
-                  <th className="pb-2 text-right font-semibold">Dom. share</th>
+                  <th className="pb-2 font-semibold">Obs.-share proxy</th>
+                  <th className="pb-2 font-semibold">Most observed</th>
+                  <th className="pb-2 text-right font-semibold">Obs. share</th>
                   <th className="pb-2 text-right font-semibold">Avg fare</th>
-                  <th className="pb-2 text-center font-semibold">Fare pressure</th>
+                  <th className="pb-2 text-center font-semibold">Fare-level band</th>
                   <th className="pb-2 text-right font-semibold">Obs.</th>
+                  <th className="pb-2 text-right font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((r) => (
                   <tr
                     key={r.route}
-                    className="cursor-pointer border-b border-line/60 last:border-0 hover:bg-ground/60"
-                    onClick={() => setSelected(r)}
+                    className="border-b border-line/60 last:border-0 hover:bg-ground/60"
                   >
                     <td className="py-2.5 font-mono text-[12px] font-medium">{r.route}</td>
                     <td className="py-2.5 text-center">
@@ -417,6 +425,16 @@ export default function Competition() {
                     </td>
                     <td className="py-2.5 text-right tnum text-muted">
                       {r.observation_count.toLocaleString()}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <button
+                        type="button"
+                        className="text-[11px] font-medium text-accent hover:underline"
+                        onClick={() => setSelected(r)}
+                        aria-label={`Open competition details for ${r.route}`}
+                      >
+                        Details
+                      </button>
                     </td>
                   </tr>
                 ))}

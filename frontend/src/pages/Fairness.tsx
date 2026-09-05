@@ -16,6 +16,7 @@ import {
 } from '../api'
 import { Card, EmptyState, ErrorNote, JudgePanel, Spinner, StatTile, Pill } from '../components/ui'
 import { axisProps, gridProps, tooltipProps } from '../components/chart'
+import { useDialogFocus } from '../components/useDialogFocus'
 import { useJudgeMode } from '../context/judgeModeContext'
 
 // ─── Colour helpers ───────────────────────────────────────────────────────────
@@ -49,12 +50,15 @@ function CategoryDrawer({
   onClose: () => void
 }) {
   const color = CAT_COLOR[row.category] ?? '#666'
+  const dialogRef = useDialogFocus<HTMLDivElement>()
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[8vh]">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="fairness-category-title"
+        tabIndex={-1}
         className="w-full max-w-[640px] rounded-lg border border-line bg-white shadow-xl"
       >
         <header className="flex items-start justify-between border-b border-line px-6 py-4">
@@ -76,6 +80,7 @@ function CategoryDrawer({
             <p className="mt-1 text-[12px] text-muted">Like-for-like category index signal</p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="ml-4 rounded-md p-1.5 text-muted hover:bg-ground hover:text-ink transition-colors"
             aria-label="Close"
@@ -115,6 +120,13 @@ function CategoryDrawer({
             </div>
             <p className="text-[13px] leading-relaxed text-ink">{row.description}</p>
           </div>
+
+          {row.observation_count > 0 && !row.index_weighting_complete && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-[11.5px] leading-relaxed text-amber-900">
+              No relative pressure band is assigned because this category includes
+              cells without reviewed prototype route weights.
+            </div>
+          )}
 
           {/* Routes list */}
           {row.routes.length > 0 && (
@@ -235,7 +247,7 @@ export default function Fairness() {
     avg_exposure_proxy: 'Avg exposure proxy',
   }
   const chartData = cats
-    .filter((c) => c.observation_count > 0)
+    .filter((c) => c.observation_count > 0 && c[chartMetric] != null)
     .map((c) => ({
       name: c.category.replace('Connectivity-sensitive', 'Connectivity'),
       value:
@@ -288,7 +300,7 @@ export default function Fairness() {
         <StatTile label="Policy categories" value={String(policyCategories.length)} />
         <StatTile label="Policy categories with data" value={String(policyWithData.length)} />
         <StatTile
-          label="High fare-pressure categories"
+          label="High relative-signal categories"
           value={String(highPressure)}
           tone={highPressure > 0 ? 'alert' : 'default'}
         />
@@ -316,7 +328,9 @@ export default function Fairness() {
           ).map(([key, label]) => (
             <button
               key={key}
+              type="button"
               onClick={() => setChartMetric(key)}
+              aria-pressed={chartMetric === key}
               className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
                 chartMetric === key
                   ? 'bg-accent-soft text-accent'
@@ -389,9 +403,8 @@ export default function Fairness() {
                   <tr
                     key={row.category}
                     className={`border-b border-line last:border-0 ${
-                      empty ? 'opacity-40' : 'cursor-pointer hover:bg-ground'
+                      empty ? 'opacity-40' : 'hover:bg-ground'
                     }`}
-                    onClick={() => !empty && setSelected(row)}
                   >
                     {/* Category name */}
                     <td className="py-2.5 pl-0 pr-3">
@@ -427,7 +440,14 @@ export default function Fairness() {
                     </td>
                     <td className="py-2.5 pl-3 pr-0 text-right">
                       {!empty && (
-                        <span className="text-[11px] text-accent hover:underline">Details</span>
+                        <button
+                          type="button"
+                          className="text-[11px] font-medium text-accent hover:underline"
+                          onClick={() => setSelected(row)}
+                          aria-label={`Open details for ${row.category}`}
+                        >
+                          Details
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -452,21 +472,19 @@ export default function Fairness() {
             pattern, prompting deeper analyst investigation rather than automated conclusions.
           </p>
           <p>
-            Observed differences may reflect{' '}
-            <strong>legitimate demand and supply dynamics</strong> — tourism peaks, corporate
-            travel patterns, or limited aircraft capacity on thin routes.  No inference of
-            discrimination or wrongdoing is made.  The view is intended to help MoSPI and DGCA
-            prioritise which corridors warrant closer monitoring.
+            Observed differences can have many explanations that this dataset does not measure,
+            including demand mix, schedules, capacity, or event timing. No inference of
+            discrimination or wrongdoing is made. The view only prioritises questions for
+            follow-up with authoritative route and passenger evidence.
           </p>
         </div>
 
         {/* Tier-2 note */}
         <div className="mt-4 rounded-md border border-line bg-ground px-4 py-3 text-[12px] leading-relaxed text-muted">
           <strong className="text-ink">Tier-2 routes not in demo dataset.</strong> The synthetic
-          sample covers only 7 metro city-pairs.  In a production deployment with real GDS or
-          airline data, routes serving regional centres (Bhopal, Raipur, Srinagar, Imphal, etc.)
-          would appear in the Tier-2 category — typically the highest-priority monitoring segment
-          due to low carrier counts and limited passenger alternatives.
+          sample covers only 7 city-pairs. Routes serving regional centres can be assigned only
+          after a reviewed classification is supplied. The prototype does not assume their
+          carrier availability, transport alternatives, or monitoring priority.
         </div>
 
         <div className="mt-3 rounded-md border border-[#dbeafe] bg-[#eff6ff] px-4 py-3 text-[11.5px] leading-relaxed text-[#1e40af]">

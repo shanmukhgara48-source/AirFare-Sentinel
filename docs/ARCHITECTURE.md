@@ -20,7 +20,7 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │                     FastAPI (Python 3.12+)                          │
 │                                                                     │
-│  main.py ─── 26 API endpoints                                      │
+│  main.py ─── 25 API endpoints                                      │
 │     │                                                               │
 │     ├── engine/index.py ─── Laspeyres + Jevons index computation   │
 │     ├── engine/anomaly.py ─── robust z-score spike detection        │
@@ -71,7 +71,7 @@
 
 ### 2. API layer (FastAPI)
 
-26 endpoints organized into four groups:
+25 endpoints organized into four groups:
 
 **Dashboard endpoints** (read-only, no auth needed for demo):
 - `GET /api/overview` — publication-gated basket indicator with index series
@@ -238,7 +238,7 @@ add Redis, materialized views, or scheduled pre-computation after benchmarking.
 ### Why pure functions in the engine?
 
 `engine/index.py` and `engine/anomaly.py` take lists of dicts and return lists of dicts. No database dependency. This means:
-- 468 tests plus 33 subtests run against an isolated temporary SQLite database
+- The full backend suite runs against an isolated temporary SQLite database
 - The same functions work on CSV data (integration tests) and DB data (API)
 - Easy to swap the storage layer without touching computation logic
 

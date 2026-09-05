@@ -88,7 +88,7 @@ RECONCILIATION_TOLERANCE = 2.0
 
 # ------------------------------------------------------------------ route basket
 
-# Monograph §5.1: stratified by DGCA passenger volume.
+# Prototype stratum labels; not calibrated to current DGCA passenger volumes.
 # Direction is explicit — DEL-BOM and BOM-DEL are distinct products.
 class RouteStratum(str, Enum):
     METRO_TRUNK = "METRO_TRUNK"

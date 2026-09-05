@@ -10,18 +10,14 @@ These signals are monitoring indicators for policy context.  Observed
 differences across categories may reflect legitimate demand/supply dynamics
 rather than systemic bias.  No claim of discrimination or wrongdoing is made.
 
-Route categories (synthetic demo classification)
+Route categories (team-authored synthetic-demo classification)
 -------------------------------------------------
 Metro              : High-frequency trunk routes between Tier-1 metro cities.
-                     Typically high supply and strong competition.
-Business-heavy     : Corridors dominated by corporate travel patterns.
-                     Demand can be price-inelastic; CCI-monitoring interest.
-Tourism-heavy      : Routes with strong seasonal leisure demand.
-                     Elevated fares in event windows are expected.
-Connectivity-sensitive : Routes where air is the primary long-haul option.
-                     Passengers have limited transport alternatives.
+                     The label is illustrative, not a measured supply claim.
+Business-heavy     : Corridors tagged for a business-travel scenario.
+Tourism-heavy      : Corridors tagged for a seasonal-leisure scenario.
+Connectivity-sensitive : Corridors tagged for an access-monitoring scenario.
 Tier-2             : Routes serving smaller regional centres (not in demo dataset).
-                     Lower frequency, fewer carriers — highest monitoring priority.
 Unclassified       : Imported/live routes outside the prototype mapping. Kept
                      separate so they cannot distort a named policy category.
 """
@@ -56,29 +52,24 @@ ROUTE_CATEGORIES: dict[str, str] = {
 
 CATEGORY_DESCRIPTIONS: dict[str, str] = {
     "Metro": (
-        "High-frequency trunk routes between Tier-1 metro cities.  Strong competition "
-        "and high capacity typically moderate fare pressure — passengers can choose "
-        "across many flights and carriers."
+        "Team-authored prototype tag for trunk routes between Tier-1 metro cities. "
+        "It does not assert measured capacity, competition, or traveller choice."
     ),
     "Business-heavy": (
-        "Corridors dominated by corporate travellers with time-sensitive itineraries.  "
-        "Demand can be price-inelastic, and last-minute fares on these routes are "
-        "a common focus of consumer-protection monitoring."
+        "Team-authored prototype tag for a business-travel monitoring scenario. "
+        "No passenger-purpose or demand-elasticity data is present in this dataset."
     ),
     "Tourism-heavy": (
-        "Routes with strong seasonal leisure demand tied to festivals, holidays, and "
-        "school breaks.  Elevated fares in event windows are expected; sustained "
-        "elevation outside event windows is the signal to watch."
+        "Team-authored prototype tag for a seasonal-leisure monitoring scenario. "
+        "The dataset does not measure trip purpose or establish event causality."
     ),
     "Connectivity-sensitive": (
-        "Routes where air travel is often the primary long-haul transport option.  "
-        "Passengers on these corridors face limited alternatives, making fare "
-        "pressure particularly significant from an equitable-access standpoint."
+        "Team-authored prototype tag for an access-monitoring scenario. Alternative "
+        "transport availability and passenger harm are not measured here."
     ),
     "Tier-2": (
-        "Routes serving smaller regional centres with fewer flight options and "
-        "carriers.  Not represented in the current synthetic dataset — would appear "
-        "when real data including regional airports is loaded."
+        "Placeholder for reviewed regional-route metadata. It is not represented in "
+        "the current synthetic dataset and carries no assumed priority."
     ),
     "Unclassified": (
         "Routes not present in the prototype category mapping. They remain visible "
@@ -110,11 +101,13 @@ def _index_summary(rows: list[dict]) -> dict:
     }
     if not rows or any(not required.issubset(row) for row in rows):
         return {
-            "index_value": 100.0,
-            "index_change_pct": 0.0,
+            "index_value": None,
+            "index_change_pct": None,
             "index_period_start": None,
             "index_period_end": None,
             "index_quality_flag": None,
+            "index_aggregation_method": None,
+            "index_weighting_complete": False,
         }
     series = compute_index_timeseries(rows, granularity="day", weighted=True)
     if not series:
@@ -124,6 +117,8 @@ def _index_summary(rows: list[dict]) -> dict:
             "index_period_start": None,
             "index_period_end": None,
             "index_quality_flag": None,
+            "index_aggregation_method": None,
+            "index_weighting_complete": False,
         }
     first, latest = series[0], series[-1]
     change = (
@@ -136,6 +131,8 @@ def _index_summary(rows: list[dict]) -> dict:
         "index_period_start": first["period"],
         "index_period_end": latest["period"],
         "index_quality_flag": latest["quality_flag"],
+        "index_aggregation_method": latest["aggregation_method"],
+        "index_weighting_complete": latest["weighting_complete"],
     }
 
 
@@ -188,7 +185,7 @@ def compute_fairness(
     # a median of individual fares. The basket is calculated with the same
     # cell-relative method as each category.
     basket_index = _index_summary(observations)
-    basket_change = basket_index["index_change_pct"] or 0.0
+    basket_change = basket_index["index_change_pct"]
 
     results: list[dict] = []
     for cat in CATEGORY_ORDER:
@@ -201,6 +198,7 @@ def compute_fairness(
             results.append({
                 "category": cat,
                 "description": CATEGORY_DESCRIPTIONS[cat],
+                "category_definition_basis": "team_authored_prototype_route_tags",
                 "route_count": 0,
                 "observation_count": 0,
                 "avg_fare": None,
@@ -215,6 +213,8 @@ def compute_fairness(
                 "index_period_start": None,
                 "index_period_end": None,
                 "index_quality_flag": None,
+                "index_aggregation_method": None,
+                "index_weighting_complete": False,
                 "fare_pressure": None,
                 "routes": [],
             })
@@ -224,26 +224,38 @@ def compute_fairness(
         median_fare = statistics.median(fares)
         alert_rate = alert_count / obs_count
 
+        available_exposures = [
+            c.get("exposure_proxy", c.get("impact_score", 0.0))
+            for c in cat_spikes
+            if c.get("exposure_proxy_available", True)
+        ]
         avg_exposure = (
-            statistics.mean(
-                c.get("exposure_proxy", c.get("impact_score", 0.0))
-                for c in cat_spikes
-            )
-            if cat_spikes else None
+            statistics.mean(available_exposures)
+            if available_exposures else None
         )
         index_summary = _index_summary(observations_by_cat[cat])
-        category_change = index_summary["index_change_pct"] or 0.0
-        relative_to_basket = round(category_change - basket_change, 2)
-        if relative_to_basket > 2.0:
-            fare_pressure = "High"
-        elif relative_to_basket < -2.0:
-            fare_pressure = "Low"
+        category_change = index_summary["index_change_pct"]
+        if (
+            category_change is None
+            or basket_change is None
+            or not basket_index["index_weighting_complete"]
+            or not index_summary["index_weighting_complete"]
+        ):
+            relative_to_basket = None
+            fare_pressure = None
         else:
-            fare_pressure = "Moderate"
+            relative_to_basket = round(category_change - basket_change, 2)
+            if relative_to_basket > 2.0:
+                fare_pressure = "High"
+            elif relative_to_basket < -2.0:
+                fare_pressure = "Low"
+            else:
+                fare_pressure = "Moderate"
 
         results.append({
             "category": cat,
             "description": CATEGORY_DESCRIPTIONS[cat],
+            "category_definition_basis": "team_authored_prototype_route_tags",
             "route_count": len(routes_by_cat.get(cat, set())),
             "observation_count": obs_count,
             "avg_fare": round(avg_fare, 2),

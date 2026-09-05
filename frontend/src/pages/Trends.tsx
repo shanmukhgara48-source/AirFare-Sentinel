@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, formatClass, formatINR, qs, type FilterOptions, type Trends as TrendsData } from '../api'
+import { api, apiUrl, formatClass, formatINR, qs, type FilterOptions, type Trends as TrendsData } from '../api'
 import {
   Button,
   Card,
@@ -86,13 +86,13 @@ export default function Trends() {
     setDateTo('')
   }
 
-  const exportUrl = `/api/export/observations.csv${qs({
+  const exportUrl = apiUrl(`/api/export/observations.csv${qs({
     origin: origin || undefined,
     destination: destination || undefined,
     airline: airline || undefined,
     fare_class: fareClass || undefined,
     lead_bucket: leadBucket || undefined,
-  })}`
+  })}`)
 
   if (error) return <ErrorNote message={error} />
 
@@ -229,7 +229,13 @@ export default function Trends() {
 
           <Card
             title="Index for this selection"
-            subtitle="Recomputed over only the cells matching your filters"
+            subtitle={
+              data.series.at(-1)?.aggregation_method === 'unweighted_jevons_fallback'
+                ? 'Unweighted Jevons fallback; selected routes have no reviewed prototype weights'
+                : data.series.at(-1)?.aggregation_method === 'partial_prototype_weighted_subset'
+                  ? 'Prototype-weighted subset only; unsupported routes are excluded and publication is not valid'
+                  : 'Prototype-weighted index recomputed over only the cells matching your filters'
+            }
           >
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={data.series} margin={{ top: 6, right: 8, left: 4, bottom: 0 }}>
@@ -284,9 +290,9 @@ export default function Trends() {
                 </BarChart>
               </ResponsiveContainer>
               <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
-                Fares climb steeply inside the last two weeks — the classic booking curve. Each
-                bucket is a separate comparability group, so the index never mistakes a shift in
-                when people book for a change in price.
+                These bars describe the current selection; they do not prescribe when to book.
+                Each bucket is a separate comparability group, reducing the risk that a change in
+                booking-window mix is mistaken for a price movement.
               </p>
             </Card>
 

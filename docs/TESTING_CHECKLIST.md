@@ -11,7 +11,7 @@ source .venv/bin/activate
 python -m pytest tests -q
 ```
 
-- [ ] `468 passed, 33 subtests passed`
+- [ ] Record the exact current pass/subtest totals from pytest output
 - [ ] No warnings or failures
 - [ ] The test run does not change `backend/apix.db` (tests use a temporary DB)
 

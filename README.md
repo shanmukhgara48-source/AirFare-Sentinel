@@ -43,6 +43,17 @@ This resets the demo database and loads 23,558 validated synthetic observations
 across 14 directional routes, 4 fictional carriers, 4 fare classes, and 5
 booking lead-time buckets.
 
+## Regulatory Review
+
+Open **Regulatory Review** to convert upward fare alerts into persistent review
+cases, document the government action checklist, and download evidence packs or
+JSON/CSV summaries. Cases preserve quote, baseline and peer evidence within the
+active demo/imported/live source. Severity is a triage priority; all outputs are
+**decision support, not a legal finding**. Airline clarification and AirSewa/CPGRAMS
+routing remain manual. Admin resets also clear review cases and history.
+
+See [workflow, research sources, API and tests](docs/REGULATORY_REVIEW.md).
+
 ## Operating Modes And Provenance
 
 Operating mode and stored-data provenance are reported separately:
@@ -80,9 +91,11 @@ curl http://localhost:8000/api/version
 
 Only proceed when `live_fetch_enabled` is `true`. Provider readiness is not a
 live-data claim: `live_data_available` becomes `true` only after stored rows
-carry live provenance. The Amadeus test environment
-has limited Indian domestic coverage; live results are quote snapshots, not
-transaction prices or forecasts. Demo data remains available as fallback.
+carry live provenance. The Amadeus test environment has limited Indian domestic
+coverage; live results are Flight Offers Search snapshots, not transaction
+prices or forecasts. Production display or purchase flows would additionally
+re-confirm an offer through Flight Offers Price. Demo data remains available as
+fallback.
 
 ## Dashboard
 
@@ -155,10 +168,9 @@ npm run lint
 npm run build
 ```
 
-Current verified baseline: **468 tests and 33 subtests pass**, frontend lint is
-warning-free, and the production build completes without chunk-size warnings.
-Tests use an isolated temporary SQLite database and do not overwrite the demo
-database.
+Record the exact output from these commands before each judging session rather
+than relying on a stale count in documentation. Tests use an isolated temporary
+SQLite database and do not overwrite the demo database.
 
 ## Project Layout
 
@@ -170,10 +182,22 @@ backend/app/
   providers/        demo and credential-gated Amadeus adapters
   ingestion/        CSV/live validation and provider orchestration
   db/               SQLite schema and connection management
-backend/tests/       14 focused test modules plus isolated test configuration
+backend/tests/       focused test modules plus isolated test configuration
 frontend/src/
   pages/             10 route-level screens
   components/        shared layout, controls, evidence, and chart helpers
   context/           Judge Mode state
 docs/                architecture, method, demo, limitations, and QA guides
 ```
+
+## Method references
+
+- [MoSPI CPI technical note](https://www.mospi.gov.in/sites/default/files/press_release/CPI%20Technical%20Note%20on%20Imputation.pdf)
+  for elementary aggregation and higher-level weighting context.
+- [IMF Consumer Price Index Manual](https://www.imf.org/en/Data/Statistics/cpi-manual)
+  for CPI construction principles and elementary-index choices.
+- [Competition Commission of India FAQ](https://www.cci.gov.in/images/whatsnew/en/faq-english-compressed-31020221664785663.pdf)
+  for the definition of HHI from market shares; FarePulse deliberately labels
+  its observation-share calculation as a proxy.
+- [Amadeus Self-Service API FAQ](https://admin.developers.amadeus.com/self-service/apis-docs/guides/developer-guides/faq/)
+  for the distinction between Flight Offers Search and offer-price confirmation.

@@ -31,11 +31,22 @@ CREATE TABLE IF NOT EXISTS observations (
   provider          TEXT,          -- e.g. 'amadeus', 'demo', or NULL for uploaded CSV
   flight_number     TEXT,          -- carrier + flight number if available from provider
   offer_id          TEXT,          -- provider's unique reference for this offer
-  offer_expiry      TEXT,          -- ISO datetime when this offer expires, if provided
+  departure_time    TEXT,
+  arrival_time      TEXT,
+  price_status      TEXT,
+  offer_expiry      TEXT          -- ISO datetime when this offer expires, if provided
 
-  -- One fare per carrier, class, flight date and observation date.
-  UNIQUE (origin, destination, airline, fare_class, travel_date, quote_date)
+
 );
+
+-- Preserve CSV/demo natural keys, but retain separate live itineraries.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_obs_nonlive_unique ON observations
+  (origin, destination, airline, fare_class, travel_date, quote_date, source_type)
+  WHERE source_type <> 'live';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_obs_live_unique ON observations
+  (origin, destination, airline, fare_class, travel_date, quote_date,
+   COALESCE(provider, ''), COALESCE(NULLIF(offer_id, ''), NULLIF(flight_number, ''), ''))
+  WHERE source_type = 'live';
 
 -- The comparability cell, in the order the index engine groups by.
 CREATE INDEX IF NOT EXISTS idx_obs_cell
@@ -81,4 +92,33 @@ CREATE TABLE IF NOT EXISTS quarantined_rows (
   batch_id        TEXT NOT NULL REFERENCES ingestion_batches(batch_id),
   raw_row         TEXT NOT NULL,
   reject_reason   TEXT NOT NULL
+);
+
+-- Frozen analytical evidence plus editable, versioned analyst workflow.
+-- No FK to observations: evidence is a snapshot, not a live join.
+CREATE TABLE IF NOT EXISTS regulatory_cases (
+  case_id TEXT PRIMARY KEY,
+  observation_id INTEGER NOT NULL,
+  source_type TEXT NOT NULL CHECK (source_type IN ('demo', 'imported', 'live')),
+  severity TEXT NOT NULL CHECK (severity IN ('Watch', 'Review', 'Escalate')),
+  status TEXT NOT NULL CHECK (status IN ('New Alert', 'Evidence Pending', 'Analyst Review',
+    'Airline Clarification Needed', 'Monitoring', 'Recommended Escalation', 'Closed')),
+  snapshot_json TEXT NOT NULL,
+  checklist_json TEXT NOT NULL,
+  analyst_notes TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (source_type, observation_id)
+);
+CREATE INDEX IF NOT EXISTS idx_regulatory_cases_source ON regulatory_cases(source_type, created_at);
+
+CREATE TABLE IF NOT EXISTS regulatory_case_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id TEXT NOT NULL REFERENCES regulatory_cases(case_id),
+  version INTEGER NOT NULL,
+  recorded_at TEXT NOT NULL,
+  action TEXT NOT NULL,
+  changes_json TEXT NOT NULL,
+  UNIQUE (case_id, version)
 );

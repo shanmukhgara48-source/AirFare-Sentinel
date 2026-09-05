@@ -348,11 +348,12 @@ class TestExport(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/csv", r.headers.get("content-type", ""))
 
-    def test_export_has_disclaimer_comment(self):
+    def test_export_has_standard_header_and_provenance_headers(self):
         r = client.get("/api/export/observations.csv")
-        self.assertIn("Demo dataset (synthetic)", r.text)
-        self.assertIn("not transaction prices", r.text)
-        self.assertIn("official statistical release", r.text)
+        self.assertTrue(r.text.startswith("id,origin,destination,"))
+        self.assertFalse(r.text.startswith("#"))
+        self.assertEqual(r.headers["x-farepulse-dataset-mode"], "demo")
+        self.assertEqual(r.headers["x-farepulse-active-source"], "demo")
 
 
 class TestJudgeDemoPath(unittest.TestCase):

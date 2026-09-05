@@ -315,7 +315,8 @@ def validate_live_quotes(quotes: list[dict]) -> tuple[list[dict], list[dict]]:
 
         # 5. Duplicates within this batch
         key = (origin, destination, airline, fare_class,
-               travel_date.isoformat(), quote_date.isoformat())
+               travel_date.isoformat(), quote_date.isoformat(),
+               q.get("provider"), q.get("offer_id") or q.get("flight_number") or "")
         if key in seen_keys:
             _reject("DUPLICATE_KEY")
             continue
@@ -340,6 +341,10 @@ def validate_live_quotes(quotes: list[dict]) -> tuple[list[dict], list[dict]]:
         obs["flight_number"] = q.get("flight_number")
         obs["offer_id"] = q.get("offer_id")
         obs["offer_expiry"] = q.get("offer_expiry")
+        for field in ("departure_time", "arrival_time", "price_status"):
+            obs[field] = q.get(field)
+        if supplied_total is not None:
+            obs["total_fare"] = round(supplied_total_value, 2)
         accepted.append(obs)
 
     return accepted, quarantined

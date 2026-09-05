@@ -76,6 +76,12 @@ in the reference-cell universe, then across the five lead-time buckets and four
 fare classes. A route therefore keeps the same headline influence whether one
 or several carriers are observed.
 
+Routes outside the prototype basket have no reviewed weight. An all-unknown
+selection therefore exposes an explicitly labelled unweighted Jevons fallback;
+a mixed selection exposes a partial prototype-weight subset. Both force RED
+quality and suppress weighted publication rather than silently treating
+unsupported routes as valid weighted coverage.
+
 This means a 10% rise on Delhi-Mumbai moves the prototype basket more than a 10%
 rise on Bangalore-Hyderabad because the illustrative weight is larger. That is a
 method demonstration, not evidence of the number of passengers currently affected.
@@ -220,8 +226,8 @@ it tells the analyst that the weighting scheme matters for this period.
 
 ## Summary for presentation
 
-> "We built a price index for domestic airfares using the same statistical methods
-> that national statistical offices use for consumer price indices. Every fare is
+> "We built a domestic-airfare basket prototype that draws on established CPI
+> elementary-aggregation and fixed-weight concepts. Every fare is
 > compared only against the same route, airline, cabin class, and booking window.
 > We aggregate using illustrative traffic weights so that trunk routes count
 > proportionally, with current DGCA calibration required for production.

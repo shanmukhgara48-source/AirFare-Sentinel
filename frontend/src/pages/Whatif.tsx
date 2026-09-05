@@ -26,6 +26,8 @@ interface Projection {
   competitionContrib: number
   projectedChange: number
   projectedApix: number
+  outsideModelDomain: boolean
+  validityWarning: string | null
   exposureProxy: number
   risk: 'Low' | 'Watch' | 'Review' | 'Escalate'
   explanation: string
@@ -227,6 +229,8 @@ export default function Whatif() {
           competitionContrib: result.competition_contribution,
           projectedChange: result.projected_change_pct,
           projectedApix: result.projected_apix,
+          outsideModelDomain: result.outside_model_domain,
+          validityWarning: result.validity_warning,
           exposureProxy: result.exposure_proxy,
           risk: result.risk_level,
           explanation: result.explanation,
@@ -284,7 +288,7 @@ export default function Whatif() {
             </span>
           </div>
           <p className="mt-1.5 text-[13px] text-muted">
-            Explore a transparent formula using uncalibrated assumptions; this is not a forecast.
+            Explore a transparent, uncalibrated sensitivity formula; this is not a forecast.
           </p>
         </div>
         <div className="rounded-lg border border-line bg-surface px-4 py-2.5 text-[12px]">
@@ -300,6 +304,15 @@ export default function Whatif() {
       </div>
 
       {error && <ErrorNote message={`Scenario recalculation failed: ${error}`} />}
+
+      {p.outsideModelDomain && p.validityWarning && (
+        <div
+          className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-[12px] leading-relaxed text-red-800"
+          role="alert"
+        >
+          <strong>Outside model domain.</strong> {p.validityWarning}
+        </div>
+      )}
 
       {/* ───────────────────────── JUDGE MODE ───────────────────────── */}
       {judgeMode && !showingPendingResult && (
@@ -398,8 +411,10 @@ export default function Whatif() {
 
           {/* Formula card */}
           <Card title="Formula transparency">
-            <button
-              onClick={() => setShowFormula((v) => !v)}
+              <button
+                type="button"
+                onClick={() => setShowFormula((v) => !v)}
+                aria-expanded={showFormula}
               className="flex items-center gap-1.5 text-[12px] font-medium text-accent hover:underline"
             >
               {showFormula ? '▲ Hide formula' : '▼ Show formula'}
@@ -408,7 +423,7 @@ export default function Whatif() {
             {showFormula && (
               <div className="mt-3 space-y-3">
                 <div className="rounded-md border border-line bg-ground p-4 font-mono text-[11.5px] leading-relaxed text-ink">
-                  <div className="text-muted">{'/* Projected index change */'}</div>
+                  <div className="text-muted">{'/* Formula-implied index change */'}</div>
                   <div className="mt-1">
                     APIx Δ% = (0.60 × demand%) + (0.35 × fuel%) + (−0.50 × capacity%)
                   </div>
@@ -470,7 +485,7 @@ export default function Whatif() {
           >
             <div className="px-6 pt-5 pb-4">
               <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted mb-2">
-                Projected index change
+                Formula-implied index change
               </div>
               <div
                 data-testid="whatif-projected-change"
@@ -541,7 +556,7 @@ export default function Whatif() {
       {/* Contribution breakdown */}
       <Card title="Factor contribution breakdown">
         <p className="mb-4 text-[12px] text-muted">
-          Each bar shows how much that factor adds or removes from the projected index change.
+          Each bar shows how much that factor adds or removes from the formula-implied change.
           Red bars increase pressure; green bars relieve it.
         </p>
         <table className="w-full">

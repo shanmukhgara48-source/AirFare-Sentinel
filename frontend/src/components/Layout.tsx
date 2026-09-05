@@ -1,3 +1,4 @@
+import { MapPinned } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
@@ -16,6 +17,7 @@ function Svg({ children }: { children: ReactNode }) {
 }
 
 const ICONS: Record<string, ReactNode> = {
+  routes: <MapPinned size={15} strokeWidth={1.75}/>,
   overview: <Svg><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></Svg>,
   alert:    <Svg><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></Svg>,
   bar:      <Svg><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></Svg>,
@@ -31,9 +33,11 @@ const ICONS: Record<string, ReactNode> = {
 // ─── Nav data ──────────────────────────────────────────────────────────────────
 const NAV_MAIN = [
   { to: '/', end: true,  label: 'Overview',          desc: 'Publication-gated basket view',    icon: 'overview' },
+  { to: '/routes', label: 'Route Observatory', desc: 'Interactive India network', icon: 'routes' },
   { to: '/spikes',       label: 'Fare Alerts',        desc: 'Analyst queue · case files',      icon: 'alert'    },
+  { to: '/review', label: 'Regulatory Review', desc: 'Evidence & case workflow', icon: 'shield' },
   { to: '/competition',  label: 'Competition',         desc: 'Observation-share proxy',         icon: 'bar'      },
-  { to: '/vulnerability',label: 'Vulnerability',       desc: 'Lead-time fare pressure',         icon: 'shield'   },
+  { to: '/vulnerability',label: 'Vulnerability',       desc: 'Evidence-adjusted signal',        icon: 'shield'   },
   { to: '/fairness',     label: 'Fairness Lens',       desc: 'Category index comparison',       icon: 'scale'    },
   { to: '/whatif',       label: 'What-If Simulator',   desc: 'Scenario planning tool',          icon: 'sliders'  },
 ] as const
@@ -53,42 +57,19 @@ type NavEntry = { to: string; end?: true; label: string; desc: string; icon: str
 // ─── Sidebar nav item ──────────────────────────────────────────────────────────
 function NavItem({ to, end, label, desc, icon }: NavEntry) {
   return (
-    <NavLink to={to} end={end} className="block rounded-md overflow-hidden">
-      {({ isActive }) => (
-        <div
-          className="flex items-start gap-2.5 py-[9px] transition-colors"
-          style={{
-            paddingLeft: isActive ? '10px' : '12px',
-            paddingRight: '12px',
-            background: isActive ? 'rgba(34,211,238,0.08)' : undefined,
-            borderLeft: isActive ? '2px solid #22d3ee' : '2px solid transparent',
-          }}
-          onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.04)' }}
-          onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = '' }}
-        >
-          <span className="mt-[1px] shrink-0" style={{ color: isActive ? '#22d3ee' : '#3d5a78' }}>
-            {ICONS[icon]}
-          </span>
-          <div className="min-w-0">
-            <div className="text-[12px] font-medium leading-tight" style={{ color: isActive ? '#dceeff' : '#7d9bb5' }}>
-              {label}
-            </div>
-            <div className="mt-[2px] text-[10.5px] leading-tight truncate" style={{ color: isActive ? 'rgba(220,238,255,0.4)' : '#2e4a62' }}>
-              {desc}
-            </div>
-          </div>
-        </div>
-      )}
+    <NavLink to={to} end={end} title={desc} className={({ isActive }) => `command-nav-item ${isActive ? 'is-active' : ''}`}>
+      <span className="command-nav-icon">{ICONS[icon]}</span>
+      <span className="min-w-0">
+        <span className="command-nav-label">{label}</span>
+      </span>
     </NavLink>
   )
 }
 
 function NavGroup({ label, items }: { label: string; items: readonly NavEntry[] }) {
   return (
-    <div className="mb-1">
-      <div className="px-3 pb-1 pt-[18px] text-[9px] font-bold tracking-[0.14em] uppercase" style={{ color: '#253d55' }}>
-        {label}
-      </div>
+    <div className="command-nav-group">
+      <div className="command-nav-heading">{label}</div>
       {items.map((item) => <NavItem key={item.to} {...item} />)}
     </div>
   )
@@ -124,197 +105,81 @@ export default function Layout() {
   }, [])
 
   const allNavFlat: readonly NavEntry[] = [...NAV_MAIN, ...NAV_VIEWS, ...NAV_SYS]
-  const modeColor = systemStatus === 'error'
-    ? '#f87171'
-    : system?.operating_mode === 'live'
-      ? '#4ade80'
-      : system?.operating_mode === 'demo_fallback'
-        ? '#f59e0b'
-        : '#22d3ee'
-  const modeLabel = system?.mode_label
-    ?? (systemStatus === 'error' ? 'Status unavailable' : 'Checking mode')
-  const datasetLabel = system?.dataset_label
-    ?? (systemStatus === 'error' ? 'Dataset status unavailable' : 'Checking dataset provenance')
+  const liveDatasetActive = system?.demo_mode === false
+    && system.operating_mode === 'live'
+    && system.active_analysis_source === 'live'
+    && system.available_analysis_sources.includes('live')
+  const modeTone = systemStatus === 'error' ? 'unavailable'
+    : system?.demo_mode ? 'demo'
+    : liveDatasetActive ? 'live' : 'pending'
+  const modeLabel = systemStatus === 'error' ? 'Status unavailable'
+    : system?.demo_mode ? 'Demo Mode'
+    : liveDatasetActive ? 'Live fare quote snapshots'
+    : system?.operating_mode === 'live' ? 'Live fetch enabled'
+    : system ? 'Live fetch unavailable' : 'Checking mode'
+  const datasetLabel = system?.active_analysis_source === 'live'
+    ? 'Live fare quote snapshots' : system?.dataset_label ?? 'Dataset status unavailable'
   const datasetNotice = system?.dataset_notice
-    ?? (systemStatus === 'error'
-      ? 'The API status endpoint could not be reached; no live-data claim is being made.'
-      : 'Dataset provenance is loading.')
-  const modeNotice = system?.mode_notice
-    ?? (systemStatus === 'error' ? 'The API status endpoint could not be reached.' : undefined)
+    ?? 'Dataset provenance could not be verified. No live-data claim is being made.'
+  const modeDetail = system?.demo_mode
+    ? `${system.live_provider_configured ? 'Credentials ready · ' : ''}Live fetch disabled. ${system.active_analysis_source === 'demo' ? 'Viewing synthetic observations.' : `Analysis source: ${system.active_analysis_source ?? 'none'}.`}`
+    : liveDatasetActive ? 'Observed at fetch time. Final ticket prices may differ.'
+    : system?.operating_mode === 'live' ? 'Provider enabled. Active analysis is not a live dataset.'
+    : system?.mode_notice ?? 'Connecting to the backend to verify operating mode.'
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f3f7' }}>
-
-      {/* ── Top command bar ──────────────────────────────────────────── */}
-      <header
-        className="sticky top-0 z-30 flex items-stretch shrink-0"
-        style={{ background: '#0c1a2e', borderBottom: '1px solid #182d45', height: '48px' }}
-      >
-        {/* Brand block */}
-        <div
-          className="flex w-[156px] shrink-0 items-center gap-2 px-3 sm:w-[220px] sm:gap-2.5 sm:px-4"
-          style={{ borderRight: '1px solid #182d45' }}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-label="FarePulse">
-            <circle cx="12" cy="12" r="9" stroke="#22d3ee" strokeWidth="1.5" strokeOpacity="0.3"/>
-            <polyline points="5 12 8 12 10 7.5 14 16.5 16 12 19 12"
-              stroke="#22d3ee" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <div>
-            <div style={{ color: '#dceeff', fontSize: '13px', fontWeight: '600', letterSpacing: '0', lineHeight: '1.15' }}>
-              FarePulse India
-            </div>
-            <div style={{ color: '#2e4a62', fontSize: '9px', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', lineHeight: '1', marginTop: '1px' }}>
-              Command Center
-            </div>
-          </div>
-        </div>
-
-        {/* Status strip */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:gap-5 sm:px-5">
-          {/* Mode badge */}
-          <span title={modeNotice} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '5px',
-            background: 'rgba(34,211,238,0.08)',
-            border: '1px solid rgba(34,211,238,0.2)',
-            borderRadius: '3px', padding: '3px 8px',
-          }}>
-            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: modeColor, display: 'inline-block', flexShrink: 0 }}/>
-            <span style={{ color: modeColor, fontSize: '10px', fontWeight: '600', letterSpacing: '0.1em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-              {modeLabel}
-            </span>
+    <div className="command-shell">
+      <a className="skip-link" href="#main-content">Skip to dashboard</a>
+      <header className="command-header">
+        <NavLink to="/" className="command-brand" aria-label="AirFare Sentinel overview">
+          <span className="brand-mark" aria-hidden="true">
+            <svg width="27" height="27" viewBox="0 0 32 32" fill="none">
+              <path d="M16 3 19 14 28 21 28 24 18 20 18 26 22 29 22 30 16 28 10 30 10 29 14 26 14 20 4 24 4 21 13 14Z" fill="currentColor" />
+            </svg>
           </span>
-
-          <div className="hidden sm:flex items-center gap-2" style={{ color: '#3d5a78', fontSize: '11px' }}>
-            <span style={{ width: '1px', height: '14px', background: '#182d45', display: 'inline-block' }}/>
-            <span>{datasetLabel}</span>
-          </div>
-
-          {/* Right section */}
-          <div className="flex items-center gap-3 ml-auto shrink-0">
-            <span className="hidden md:inline" style={{ color: '#253d55', fontSize: '10.5px', letterSpacing: '0.04em' }}>
-              SIH 2026 · PS 26056
-            </span>
-
-            <button
-              onClick={toggleJudgeMode}
-              title="Toggle Judge Mode — plain-English explanations on every screen"
-              className="flex items-center gap-1.5 transition-all"
-              style={{
-                background: judgeMode ? 'rgba(105,82,168,0.15)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${judgeMode ? 'rgba(105,82,168,0.45)' : 'rgba(255,255,255,0.07)'}`,
-                borderRadius: '4px', padding: '4px 10px',
-                cursor: 'pointer',
-                color: judgeMode ? '#c4b5fd' : '#4d6a85',
-                fontSize: '11px', fontWeight: '600', letterSpacing: '0.04em',
-              }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-              </svg>
-              <span className="hidden sm:inline">Judge Mode</span>
-              <span style={{
-                background: judgeMode ? '#6952a8' : 'rgba(255,255,255,0.06)',
-                color: judgeMode ? 'white' : '#3d5a78',
-                fontSize: '9px', fontWeight: '700', letterSpacing: '0.06em',
-                padding: '1px 5px', borderRadius: '2px', textTransform: 'uppercase',
-              }}>
-                {judgeMode ? 'ON' : 'OFF'}
-              </span>
-            </button>
-          </div>
+          <span><strong>AirFare<span>Sentinel</span></strong><small>AVIATION INTELLIGENCE</small></span>
+        </NavLink>
+        <div className="command-header-center"><span className="header-crosshair" aria-hidden="true">＋</span> India <span>/</span> Domestic aviation</div>
+        <div className="command-header-actions">
+          <span className="command-project">SIH 2026 <span>PS 26056</span></span>
+          <button onClick={toggleJudgeMode} aria-pressed={judgeMode} className={`judge-switch ${judgeMode ? 'is-on' : ''}`}
+            title="Toggle Judge Mode — plain-English explanations on every screen">
+            <span>Judge Mode</span><span className="judge-switch-state">{judgeMode ? 'ON' : 'OFF'}</span>
+          </button>
         </div>
       </header>
-
-      {/* ── Body ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-1">
-
-        {/* Desktop sidebar */}
-        <aside
-          className="hidden lg:flex flex-col shrink-0"
-          style={{
-            width: '220px',
-            background: '#0f1e33',
-            borderRight: '1px solid #182d45',
-            position: 'sticky',
-            top: '48px',
-            height: 'calc(100vh - 48px)',
-            overflowY: 'auto',
-            alignSelf: 'flex-start',
-          }}
-        >
-          <nav className="flex flex-col px-2 pb-2 flex-1">
-            <NavGroup label="Analysis" items={NAV_MAIN} />
-            <NavGroup label="Views" items={NAV_VIEWS} />
-            <NavGroup label="System" items={NAV_SYS} />
+      <div className="command-body">
+        <aside className="command-sidebar">
+          <div className="workspace-label"><span className="workspace-dot" /> ANALYST WORKSPACE <span>01</span></div>
+          <nav aria-label="Main navigation" className="command-navigation">
+            <NavGroup label="Monitor & investigate" items={NAV_MAIN} />
+            <NavGroup label="Explore the data" items={NAV_VIEWS} />
+            <NavGroup label="System & evidence" items={NAV_SYS} />
           </nav>
-
-          {/* Sample data notice */}
-          <div style={{ padding: '10px 12px 14px', borderTop: '1px solid #182d45', marginTop: 'auto' }}>
-            <div style={{
-              background: 'rgba(245,158,11,0.07)',
-              border: '1px solid rgba(245,158,11,0.18)',
-              borderRadius: '5px',
-              padding: '7px 10px',
-            }}>
-              <div style={{ color: '#d97706', fontSize: '9px', fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                Dataset status
-              </div>
-              <p style={{ color: 'rgba(217,119,6,0.65)', fontSize: '10.5px', lineHeight: '1.45', marginTop: '3px', marginBottom: 0 }}>
-                {datasetLabel}. Not an official statistical release.
-              </p>
-            </div>
+          <div className="sidebar-provenance">
+            <div className="sidebar-provenance-label"><span className={`status-dot ${modeTone}`} /> DATA PROVENANCE</div>
+            <strong>{datasetLabel}</strong>
+            <p>Not an official statistical release.</p>
+            <NavLink to="/method">Review methodology <span aria-hidden="true">↗</span></NavLink>
           </div>
+          <div className="sidebar-footer"><span>IND / AIRFARE MONITOR</span><span>v{system?.version ?? '—'}</span></div>
         </aside>
-
-        {/* Content column */}
-        <div className="min-w-0 flex-1 flex flex-col">
-
-          {/* Mobile: horizontal nav */}
-          <div className="lg:hidden border-b" style={{ background: '#0f1e33', borderColor: '#182d45' }}>
-            <nav className="flex gap-0.5 overflow-x-auto px-2 py-1.5">
-              {allNavFlat.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  className={({ isActive }) =>
-                    `shrink-0 rounded px-2.5 py-1 text-[11.5px] font-medium transition-colors whitespace-nowrap ${
-                      isActive
-                        ? 'text-[#22d3ee] bg-[rgba(34,211,238,0.1)]'
-                        : 'text-[#5a7a96] hover:text-[#9ab5cc] hover:bg-white/[0.04]'
-                    }`
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
+        <div className="command-content">
+          <nav className="command-mobile-nav" aria-label="Mobile navigation">
+            {allNavFlat.map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.end}
+                className={({ isActive }) => isActive ? 'is-active' : ''}>{item.label}</NavLink>
+            ))}
+          </nav>
+          <div className={`mode-ribbon ${modeTone}`} data-testid="operating-mode" role="status">
+            <div className="mode-ribbon-label"><span className={`status-dot ${modeTone}`} /><strong>{modeLabel}</strong></div>
+            <span className="mode-ribbon-detail">{modeDetail}</span>
+            <NavLink to="/admin">Data source <span aria-hidden="true">↗</span></NavLink>
           </div>
-
-          {/* Mobile: demo notice + judge toggle */}
-          <div
-            className="lg:hidden flex items-center justify-between px-4 py-1.5 text-[11px] border-b"
-            style={{ background: '#fdf4e7', borderColor: '#f0dcbb', color: '#b45309' }}
-          >
-            <span className="min-w-0 truncate">{datasetLabel}</span>
-            <button
-              onClick={toggleJudgeMode}
-              style={{ color: judgeMode ? '#6952a8' : '#b45309', fontSize: '10px', fontWeight: '700', cursor: 'pointer', background: 'none', border: 'none' }}
-            >
-              Judge {judgeMode ? 'ON' : 'OFF'}
-            </button>
-          </div>
-
-          <main className="flex-1 mx-auto w-full max-w-[1280px] px-5 py-6 lg:px-8 lg:py-8">
-            <Outlet />
-          </main>
-
-          <footer
-            className="mx-auto w-full max-w-[1280px] px-5 pb-6 text-[11px] leading-relaxed lg:px-8"
-            style={{ color: '#8ca0b5' }}
-          >
-            FarePulse Command Center · SIH 2026 PS 26056 · {datasetNotice} Prototype methodology v0.3.
+          <main id="main-content" className="command-main" tabIndex={-1}><Outlet /></main>
+          <footer className="command-footer">
+            <span>AirFare Sentinel <span aria-hidden="true">/</span> SIH 2026 · PS 26056</span>
+            <span>{datasetNotice} Prototype methodology v0.3.</span>
           </footer>
         </div>
       </div>

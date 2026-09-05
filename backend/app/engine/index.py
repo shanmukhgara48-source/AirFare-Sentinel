@@ -131,6 +131,9 @@ def compute_index_timeseries(
     # Pre-compute cell weights.
     weights = _fixed_cell_weights(reference)
     total_basket_weight = sum(weights.values())
+    weighted_reference_cells = sum(1 for weight in weights.values() if weight > 0)
+    unsupported_reference_cells = total_cells - weighted_reference_cells
+    weighting_complete = total_cells > 0 and unsupported_reference_cells == 0
 
     periods: dict[str, dict[tuple, list[float]]] = defaultdict(lambda: defaultdict(list))
     for obs in observations:
@@ -174,7 +177,11 @@ def compute_index_timeseries(
         # --- Quality flag ---
         cell_coverage = 100 * len(cell_relatives) / total_cells if total_cells else 0.0
         weight_coverage = 100 * active_weight / total_basket_weight if total_basket_weight else 0.0
-        qf = quality_flag(weight_coverage)
+        qf = (
+            quality_flag(weight_coverage)
+            if weighting_complete
+            else QualityFlag.RED
+        )
 
         primary = laspeyres_value if weighted else jevons_value
         secondary = jevons_value if weighted else laspeyres_value
@@ -184,6 +191,19 @@ def compute_index_timeseries(
             "apix_value": round(primary, 2),
             "apix_weighted": round(laspeyres_value, 2),
             "apix_unweighted": round(jevons_value, 2),
+            "aggregation_method": (
+                "prototype_weighted_laspeyres"
+                if active_weight > 0 and weighting_complete
+                else (
+                    "partial_prototype_weighted_subset"
+                    if active_weight > 0
+                    else "unweighted_jevons_fallback"
+                )
+            ),
+            "weighted_result_available": active_weight > 0,
+            "weighting_complete": weighting_complete,
+            "weighted_reference_cells": weighted_reference_cells,
+            "unsupported_reference_cells": unsupported_reference_cells,
             "active_cells": len(cell_relatives),
             "total_cells": total_cells,
             "coverage_pct": round(cell_coverage, 1),
@@ -238,15 +258,23 @@ def compute_contributions(
     first_rels = _relatives(first_period)
     last_rels = _relatives(last_period)
 
-    # All cells active in either period.
-    all_keys = set(first_rels) | set(last_rels)
-    active_weight = sum(weights.get(k, 0.0) for k in all_keys)
+    # Compare only cells observed in both endpoints.  Treating an absent cell as
+    # unchanged silently imputes a price and can produce a decomposition that
+    # cannot be defended against the stated no-imputation policy.
+    matched_keys = {
+        key
+        for key in set(first_rels) & set(last_rels)
+        if weights.get(key, 0.0) > 0
+    }
+    active_weight = sum(weights[key] for key in matched_keys)
+    if not matched_keys or active_weight <= 0:
+        return []
 
     contribs = []
-    for key in all_keys:
-        r0 = first_rels.get(key, 1.0)
-        rt = last_rels.get(key, r0)
-        w = weights.get(key, 0.0) / active_weight if active_weight else 0.0
+    for key in matched_keys:
+        r0 = first_rels[key]
+        rt = last_rels[key]
+        w = weights[key] / active_weight
         contribution_pts = 100 * w * (rt - r0)
         origin, destination, airline, fare_class, lb = key
         contribs.append({
@@ -258,6 +286,7 @@ def compute_contributions(
             "relative_start": round(r0, 4),
             "relative_end": round(rt, 4),
             "contribution_pts": round(contribution_pts, 4),
+            "comparison_basis": "cells_observed_in_both_endpoint_periods",
         })
 
     contribs.sort(key=lambda r: abs(r["contribution_pts"]), reverse=True)
@@ -302,6 +331,8 @@ def compute_group_index(
             "period_end": latest["period"],
             "cell_count": latest["total_cells"],
             "observation_count": sum(r["observation_count"] for r in series),
+            "aggregation_method": latest["aggregation_method"],
+            "weighting_complete": latest["weighting_complete"],
         })
 
     out.sort(key=lambda r: abs(r["delta"]), reverse=True)
@@ -319,6 +350,9 @@ def coverage_report(observations: list[Observation]) -> dict:
             "mean_coverage_pct": 0.0, "mean_weight_coverage_pct": 0.0,
             "complete_cells": 0, "sparse_cells": [],
             "quality_flag": QualityFlag.RED.value,
+            "weighted_cells": 0, "unsupported_weight_cells": 0,
+            "weighting_complete": False,
+            "weighting_notice": "No observations are available for weighting.",
         }
 
     periods = sorted({o["quote_date"] for o in observations})
@@ -350,6 +384,9 @@ def coverage_report(observations: list[Observation]) -> dict:
     # period contributes the share of that weight actually observed.
     weights = _fixed_cell_weights(seen)
     total_basket_weight = sum(weights.values())
+    weighted_cells = sum(1 for weight in weights.values() if weight > 0)
+    unsupported_weight_cells = len(seen) - weighted_cells
+    weighting_complete = len(seen) > 0 and unsupported_weight_cells == 0
     period_weight_coverage = []
     if total_basket_weight > 0:
         for period in periods:
@@ -362,8 +399,10 @@ def coverage_report(observations: list[Observation]) -> dict:
         if period_weight_coverage else 0.0
     )
 
-    qf = quality_flag(
-        mean_weight_coverage if total_basket_weight > 0 else mean_coverage
+    qf = (
+        quality_flag(mean_weight_coverage)
+        if total_basket_weight > 0 and weighting_complete
+        else QualityFlag.RED
     )
 
     return {
@@ -374,6 +413,17 @@ def coverage_report(observations: list[Observation]) -> dict:
         "complete_cells": complete,
         "sparse_cells": sparse[:20],
         "quality_flag": qf.value,
+        "weighted_cells": weighted_cells,
+        "unsupported_weight_cells": unsupported_weight_cells,
+        "weighting_complete": weighting_complete,
+        "weighting_notice": (
+            "All reference cells have prototype route weights."
+            if weighting_complete
+            else (
+                f"{unsupported_weight_cells} reference cell(s) have no reviewed "
+                "prototype route weight; weighted publication is suppressed."
+            )
+        ),
     }
 # ================================================================ head-to-head
 

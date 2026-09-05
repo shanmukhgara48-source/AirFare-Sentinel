@@ -1,6 +1,8 @@
+import NetworkCoverage from '../components/route-map/NetworkCoverage'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   api,
+  apiUrl,
   formatINR,
   type AnalysisSourceState,
   type Batch,
@@ -34,7 +36,7 @@ function LiveFetchCard({
   if (status === null) {
     return (
       <Card
-        title="Live fare fetch"
+        title="Live fare quote snapshots"
         subtitle="Credential-gated provider ingestion; disabled while Demo Mode is active"
         action={<Pill tone={statusError ? 'alert' : 'neutral'}>{statusError ? 'Status unavailable' : 'Checking provider'}</Pill>}
       >
@@ -49,13 +51,13 @@ function LiveFetchCard({
 
   return (
     <Card
-      title="Live fare fetch"
+      title="Live fare quote snapshots"
       subtitle="Credential-gated provider ingestion; disabled while Demo Mode is active"
       action={
         isEnabled ? (
           <Pill tone="ok">Provider active: {status?.active_live_provider ?? status?.active_provider}</Pill>
         ) : isConfigured ? (
-          <Pill tone="warn">Provider ready · Demo Mode</Pill>
+          <Pill tone="warn">Provider ready: {status?.configured_live_provider} · Demo Mode</Pill>
         ) : (
           <Pill tone="warn">No live provider</Pill>
         )
@@ -64,12 +66,13 @@ function LiveFetchCard({
       {isEnabled ? (
         <>
           <p className="text-[13px] leading-relaxed text-muted">
-            Fetches fare quotes observed <strong>today</strong> for travel at T+1, T+7, T+15, T+30,
+            Fetches live fare quote snapshots observed <strong>today</strong> for travel at T+1, T+7, T+15, T+30,
             and T+45. Each quote is a snapshot — not a guaranteed price or forecast.
+            {status?.active_live_provider === 'ignav' && ' Ignav fare components are approximated from the total; these are not official government data.'}
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <Button onClick={() => onFetch(false)} disabled={busy !== ''}>
-              {busy === 'live' ? 'Fetching…' : 'Fetch all routes'}
+              {busy === 'live' ? 'Fetching…' : 'Fetch original basket (14 routes)'}
             </Button>
             <Button variant="secondary" onClick={() => onFetch(true)} disabled={busy !== ''}>
               {busy === 'live' ? 'Fetching…' : 'Quick fetch (6 trunk routes)'}
@@ -114,9 +117,9 @@ function LiveFetchCard({
               : 'No live fare provider credentials are configured. To enable live ingestion later:'}
           </p>
           <ol className="list-decimal pl-5 text-[13px] leading-loose text-muted">
-            <li>Register at <span className="font-mono text-[12px]">developers.amadeus.com</span> (free)</li>
-            <li>Create an app and copy the client ID and secret</li>
-            <li>Add to <span className="font-mono text-[12px]">backend/.env</span>: <span className="font-mono text-[12px]">AMADEUS_CLIENT_ID=… AMADEUS_CLIENT_SECRET=…</span></li>
+            <li>Get an API key at <span className="font-mono text-[12px]">ignav.com</span> (preferred provider)</li>
+            <li>Add <span className="font-mono text-[12px]">IGNAV_API_KEY</span> to <span className="font-mono text-[12px]">backend/.env</span></li>
+            <li>Amadeus remains available with both backend client credentials when Ignav is not configured</li>
             <li>Set <span className="font-mono text-[12px]">DEMO_MODE=false</span> only when live ingestion is intended</li>
             <li>Restart the backend server and verify provider status</li>
           </ol>
@@ -300,8 +303,8 @@ export default function Admin() {
         </Card>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="Load sample dataset" subtitle="Resets the database, then loads the bundled demo file">
+      {!analysisState?.live_only && <div className="grid gap-5 lg:grid-cols-2">
+        <Card title="Load sample dataset" subtitle="Integrity-checks the bundled file, then clears observations, review cases and history before loading the demo">
           <p className="text-[13px] leading-relaxed text-muted">
             About 23,558 synthetic observations across 14 Indian routes, 4 fictional carriers, 5
             booking lead-time buckets and 4 fare classes — including two deliberately injected
@@ -316,7 +319,9 @@ export default function Admin() {
         </Card>
 
         <Card title="Upload fare CSV" subtitle="Validated row by row — nothing is silently dropped">
-          <div
+          <button
+            type="button"
+            disabled={busy === 'upload'}
             onDragOver={(e) => {
               e.preventDefault()
               setDragging(true)
@@ -328,7 +333,7 @@ export default function Admin() {
               handleFile(e.dataTransfer.files?.[0])
             }}
             onClick={() => fileInput.current?.click()}
-            className={`flex cursor-pointer flex-col items-center justify-center rounded-md border border-dashed
+            className={`flex w-full cursor-pointer flex-col items-center justify-center rounded-md border border-dashed
               px-4 py-7 text-center transition-colors ${
                 dragging ? 'border-accent bg-accent-soft' : 'border-line bg-ground/50 hover:border-accent/50'
               }`}
@@ -340,23 +345,28 @@ export default function Admin() {
               origin, destination, airline, travel_date, quote_date, fare_class, base_fare,
               taxes_fees — lead_days, lead_bucket and total_fare are derived on ingest
             </div>
-          </div>
+          </button>
           <input
             ref={fileInput}
             type="file"
             accept=".csv"
             className="hidden"
-            onChange={(e) => handleFile(e.target.files?.[0])}
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(e) => {
+              handleFile(e.target.files?.[0])
+              e.currentTarget.value = ''
+            }}
           />
           <div className="mt-4 flex justify-between">
-            <a href="/api/export/observations.csv" download>
+            <a href={apiUrl('/api/export/observations.csv')} download>
               <Button variant="secondary">Download current data</Button>
             </a>
             <Button
               variant="danger"
               disabled={busy !== ''}
               onClick={() => {
-                if (window.confirm('This will permanently delete all loaded data. Continue?'))
+                if (window.confirm('This will permanently delete all loaded data, regulatory review cases and case history. Continue?'))
                   run('clear', api.clearData)
               }}
             >
@@ -364,7 +374,9 @@ export default function Admin() {
             </Button>
           </div>
         </Card>
-      </div>
+      </div>}
+
+      {liveStatus?.live_fetch_enabled && <NetworkCoverage controls/>}
 
       <LiveFetchCard
         status={liveStatus}
@@ -452,7 +464,7 @@ export default function Admin() {
                   <th className="pb-2 font-semibold">Loaded at</th>
                   <th className="pb-2 text-right font-semibold">Accepted</th>
                   <th className="pb-2 text-right font-semibold">Quarantined</th>
-                  <th className="pb-2 text-right font-semibold">Live rows</th>
+                  <th className="pb-2 text-right font-semibold">Stored rows</th>
                 </tr>
               </thead>
               <tbody>
@@ -470,7 +482,7 @@ export default function Admin() {
                       )}
                     </td>
                     <td className="py-2 text-right tnum text-muted">
-                      {b.live_rows.toLocaleString()}
+                      {(b.stored_rows ?? b.live_rows ?? 0).toLocaleString()}
                     </td>
                   </tr>
                 ))}

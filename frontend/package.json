@@ -9,9 +9,11 @@
     "lint": "oxlint",
     "smoke": "node apix-check.mjs",
     "test:interaction": "node apix-check.mjs",
+    "test:review": "node review-check.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "lucide-react": "^1.41.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3",

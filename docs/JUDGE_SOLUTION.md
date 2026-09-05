@@ -110,7 +110,7 @@ forward**. We report the coverage gap and flag it:
 - Professional design system (IBM Plex fonts, teal/grey palette)
 
 ### Quality assurance
-- **468 automated tests plus 33 subtests** across 14 focused test modules
+- **A focused automated backend suite** covering engines, ingestion, APIs, provenance, and demo safety
 - 5 statistical properties verified: identity, proportionality,
   commensurability, permutation invariance, weight conservation
 - Full integration test: generate → validate → index → spikes → contributions
@@ -128,7 +128,7 @@ forward**. We report the coverage gap and flag it:
 | Missing data | Carry forward or impute | Never — report gap honestly |
 | Anomaly detection | Mean + stddev | Median + MAD (outlier-resistant) |
 | Price anatomy | Lump sum | 4 components (base, surcharge, taxes, airport) |
-| Transparency | Black box | Reproducible by hand; 468 tests plus 33 subtests verify |
+| Transparency | Black box | Reproducible by hand; focused engine and API tests verify |
 
 ---
 

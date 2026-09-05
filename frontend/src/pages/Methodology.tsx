@@ -53,9 +53,9 @@ export default function Methodology() {
         </p>
         <p className="mt-3 text-[13px] leading-relaxed text-muted">
           Lead time is grouped into five buckets rather than used as an exact day count. Each exact
-          day would be its own thin, unstable group; the buckets keep each group large enough to be
-          statistically stable while staying narrow enough that fares inside it are genuinely
-          comparable. Boundaries are inclusive at both ends.
+          day would be its own thin group; the buckets improve sample density while retaining a
+          narrower comparison than pooling all lead times. They reduce, but do not eliminate,
+          within-bucket mix effects. Boundaries are inclusive at both ends.
         </p>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[520px] text-[12.5px] [&_th]:px-3 [&_td]:px-3 [&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
@@ -131,6 +131,11 @@ export default function Methodology() {
             traffic change. Each route's weight is allocated equally across its observed
             carriers so routes with more carrier coverage do not gain extra headline influence.
           </p>
+          <p>
+            A route outside this prototype basket has no reviewed weight. The engine then labels
+            an unweighted fallback or partial weighted subset explicitly, forces RED quality, and
+            suppresses weighted publication rather than silently treating that route as zero.
+          </p>
         </div>
       </Card>
 
@@ -174,8 +179,9 @@ export default function Methodology() {
             <p className="mt-1">
               Each cell's reference price <Mono>P₀</Mono> is the <strong className="font-medium text-ink">geometric mean</strong> of
               fares in that cell on the first day it appears in the data. The geometric mean (not
-              arithmetic) is used because fares are log-normally distributed — the geometric mean
-              resists outlier contamination and is consistent with the Jevons form used inside each cell.
+              arithmetic) is used for multiplicative price relatives and consistency with the Jevons
+              form. It can reduce sensitivity to right-skewed values, but it is not itself an anomaly
+              treatment and no distributional claim is required.
             </p>
           </div>
 
@@ -303,9 +309,9 @@ export default function Methodology() {
           </p>
 
           <p className="text-[12px]">
-            This example is a test in the repository (<Mono>tests/test_index.py</Mono>), along with
-            75 others covering weighted aggregation, bucket boundaries, quality flags, contributions,
-            and every ingest rejection reason.
+            This example is covered in the repository's index tests, alongside focused checks for
+            weighted aggregation, bucket boundaries, quality flags, endpoint-matched contributions,
+            unknown-weight fallbacks, and ingest rejection reasons.
           </p>
         </div>
       </Card>
@@ -466,6 +472,56 @@ export default function Methodology() {
             NDC, or GDS adapter must emit the same validated row shape.
           </p>
         </div>
+      </Card>
+
+      <Card title="Authoritative method references" subtitle="Sources that define the boundary between established methods and FarePulse heuristics">
+        <ul className="space-y-3 text-[13px] leading-relaxed text-muted">
+          <li>
+            <a
+              className="font-medium text-accent hover:underline"
+              href="https://www.mospi.gov.in/sites/default/files/press_release/CPI%20Technical%20Note%20on%20Imputation.pdf"
+              target="_blank"
+              rel="noreferrer"
+            >
+              MoSPI CPI technical note
+            </a>{' '}
+            — context for geometric elementary aggregation and weighted higher-level indices.
+          </li>
+          <li>
+            <a
+              className="font-medium text-accent hover:underline"
+              href="https://www.imf.org/en/Data/Statistics/cpi-manual"
+              target="_blank"
+              rel="noreferrer"
+            >
+              IMF Consumer Price Index Manual
+            </a>{' '}
+            — international guidance on CPI construction and elementary indices.
+          </li>
+          <li>
+            <a
+              className="font-medium text-accent hover:underline"
+              href="https://www.cci.gov.in/images/whatsnew/en/faq-english-compressed-31020221664785663.pdf"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Competition Commission of India FAQ
+            </a>{' '}
+            — defines HHI using market shares, which is why FarePulse calls its observation-share
+            calculation an HHI-like proxy rather than market HHI.
+          </li>
+          <li>
+            <a
+              className="font-medium text-accent hover:underline"
+              href="https://admin.developers.amadeus.com/self-service/apis-docs/guides/developer-guides/faq/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Amadeus Self-Service API FAQ
+            </a>{' '}
+            — distinguishes offer search results from subsequent price confirmation.
+          </li>
+        </ul>
       </Card>
     </div>
   )

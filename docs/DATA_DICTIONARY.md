@@ -18,8 +18,11 @@ the same flight has a different price depending on the day you look. So the
 observation date (`quote_date`) is part of the identity of the row, not metadata
 about it.
 
-**Natural key:** `(origin, destination, airline, fare_class, travel_date, quote_date)`
-— enforced by a `UNIQUE` constraint on the `observations` table.
+**Natural key within a provenance cohort:**
+`(origin, destination, airline, fare_class, travel_date, quote_date, source_type)`
+— enforced by a `UNIQUE` constraint on the `observations` table. This permits
+the same quote identity to exist independently in demo, imported, and live
+cohorts without allowing duplicates inside one cohort.
 
 ---
 

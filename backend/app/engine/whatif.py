@@ -168,7 +168,14 @@ def project(
     projected_change = round(
         demand_contrib + fuel_contrib + capacity_contrib + competition_contrib, 2
     )
-    projected_apix = round(baseline_apix * (1 + projected_change / 100), 2)
+    raw_projected_apix = round(
+        baseline_apix * (1 + projected_change / 100), 2
+    )
+    outside_model_domain = raw_projected_apix < 0
+    # A price index cannot be negative. Preserve the raw formula output for
+    # auditability, but floor the displayed scenario index and flag that this
+    # linear heuristic has been pushed outside its meaningful domain.
+    projected_apix = max(0.0, raw_projected_apix)
     exposure_proxy = round(min(100.0, max(0.0, abs(projected_change) * IMPACT_MULTIPLIER)), 1)
     risk           = risk_level(abs(projected_change))
 
@@ -185,6 +192,15 @@ def project(
         "competition_contribution": competition_contrib,
         "projected_change_pct":     projected_change,
         "projected_apix":           projected_apix,
+        "raw_projected_apix":       raw_projected_apix,
+        "outside_model_domain":     outside_model_domain,
+        "validity_warning":         (
+            "Inputs push the uncalibrated linear formula below a zero index. "
+            "The displayed scenario index is floored at zero and must not be "
+            "interpreted quantitatively."
+            if outside_model_domain
+            else None
+        ),
         "exposure_proxy":           exposure_proxy,
         "impact_score":             exposure_proxy,  # deprecated API alias
         "risk_level":               risk,

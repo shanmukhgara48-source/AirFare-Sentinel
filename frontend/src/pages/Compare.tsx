@@ -62,6 +62,7 @@ export default function Compare() {
 
   const label = dimension === 'route' ? 'Route' : 'Carrier'
   const highestFare = rows[0]
+  const hasUnsupportedWeighting = rows.some((row) => !row.weighting_complete)
   const largestMove = rows.reduce<CompareRow | null>(
     (best, row) => !best || Math.abs(row.delta ?? 0) > Math.abs(best.delta ?? 0) ? row : best,
     null,
@@ -137,6 +138,14 @@ export default function Compare() {
           </Field>
         </div>
       </Card>
+
+      {!loading && hasUnsupportedWeighting && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-900">
+          One or more groups have no complete prototype weighting. Their index
+          movement is exploratory; use average-fare columns only as descriptive
+          levels and do not treat this ranking as a weighted national comparison.
+        </div>
+      )}
 
       {loading ? (
         <Spinner />

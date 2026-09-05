@@ -10,13 +10,15 @@ Usage:
 from app.providers.base import FareProvider, ProviderError, ProviderNotConfiguredError
 from app.providers.demo import DemoProvider
 from app.providers.amadeus import AmadeusProvider
+from app.providers.ignav import IgnavProvider
 from app.config import settings
 
 _demo = DemoProvider()
+_ignav = IgnavProvider()
 _amadeus = AmadeusProvider()
 
 # Ordered: demo first (always available), then live providers.
-ALL_PROVIDERS: list[FareProvider] = [_demo, _amadeus]
+ALL_PROVIDERS: list[FareProvider] = [_demo, _ignav, _amadeus]
 
 __all__ = [
     "ALL_PROVIDERS",

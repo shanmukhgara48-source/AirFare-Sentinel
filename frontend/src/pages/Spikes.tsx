@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { reviewApi } from '../review-api'
 import { api, formatClass, formatINR, REASON_GLOSSARY, type AuditMetadata, type EventClassification, type Spike } from '../api'
 import { Card, EmptyState, ErrorNote, Field, JudgePanel, Pill, Select, Spinner, StatTile, EvidenceTag } from '../components/ui'
+import { useDialogFocus } from '../components/useDialogFocus'
 import { useJudgeMode } from '../context/judgeModeContext'
 
 function exposureTone(score: number): 'escalate' | 'alert' | 'warn' | 'neutral' {
@@ -44,14 +47,28 @@ function CaseFileModal({
 }) {
   const sevTone = { Watch: 'warn', Review: 'alert', Escalate: 'escalate' } as const
   const confTone = { Low: 'alert', Medium: 'warn', High: 'ok' } as const
+  const dialogRef = useDialogFocus<HTMLDivElement>()
+  const navigate = useNavigate()
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
+  const createReview = async () => {
+    setCreating(true); setCreateError('')
+    try {
+      const item = await reviewApi.create(spike.observation_id, spike.source_type)
+      navigate(`/review?${new URLSearchParams({ case: item.case_id, source: item.source_type })}`)
+    } catch (err) { setCreateError(err instanceof Error ? err.message : 'Could not create review case') }
+    finally { setCreating(false) }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[8vh]">
       <div
+        ref={dialogRef}
         role="dialog"
         data-testid="case-file-dialog"
         aria-modal="true"
         aria-labelledby="case-file-title"
+        tabIndex={-1}
         className="w-full max-w-[680px] rounded-lg border border-line bg-white shadow-xl"
       >
         {/* Header */}
@@ -81,6 +98,15 @@ function CaseFileModal({
         </header>
 
         <div className="space-y-5 p-6">
+          <div className="rounded-md border border-accent/30 bg-accent-soft/40 p-4 text-[12px]">
+            <strong>Decision support, not a legal finding.</strong>
+            <p className="mt-1 leading-relaxed">A tariff anomaly may indicate a possible excessive fare; verification and airline clarification are required. Severity does not establish a Rule 135 violation.</p>
+            {spike.direction === 'spike' && <button onClick={createReview} disabled={creating}
+              className="mt-3 rounded-md bg-accent px-4 py-2 font-semibold text-white disabled:opacity-50">
+              {creating ? 'Creating…' : 'Create review case'}
+            </button>}
+            {createError && <p role="alert" className="mt-2 text-alert">{createError}</p>}
+          </div>
           {/* Classification badges */}
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2">
@@ -94,7 +120,7 @@ function CaseFileModal({
             <div className="flex items-center gap-2">
               <span className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-muted">Robust z</span>
               <Pill tone={spike.direction === 'spike' ? 'alert' : 'ok'}>
-                {spike.robust_z > 0 ? '+' : ''}{spike.robust_z.toFixed(1)}σ
+                {spike.robust_z > 0 ? '+' : ''}{spike.robust_z.toFixed(1)} rz
               </Pill>
             </div>
           </div>
@@ -237,12 +263,14 @@ function CaseFileModal({
                   Uncalibrated prioritisation proxy — no passenger counts, bookings, or measured harm.
                 </p>
               </div>
-              <Pill tone={exposureTone(spike.exposure_proxy)}>
-                {spike.exposure_proxy} / 100
+              <Pill tone={spike.exposure_proxy_available ? exposureTone(spike.exposure_proxy) : 'neutral'}>
+                {spike.exposure_proxy_available ? `${spike.exposure_proxy} / 100` : 'N/A'}
               </Pill>
             </div>
             <p className="mt-2 text-[11px] font-mono text-muted/80">
-              route weight × (deviation / 25) × lead urgency × severity × confidence
+              {spike.exposure_proxy_available
+                ? 'route weight × (deviation / 25) × lead urgency × severity × confidence'
+                : 'Unavailable: this route has no reviewed prototype route weight.'}
             </p>
           </div>
 
@@ -407,7 +435,7 @@ export default function Spikes() {
           {
             q: 'What happened?',
             a: data
-              ? `${data.flagged_count} of ${data.scanned_count.toLocaleString()} observed fares were flagged as statistically unusual at the current sensitivity setting (robust z-score > ${data.threshold}, deviation ≥ 25% from the cell median). ${data.event_window_count > 0 ? `${data.event_window_count} of these fall within a known event window (festival or holiday period).` : 'None fall within a known festival or holiday window.'}`
+              ? `${data.flagged_count} of ${data.scanned_count.toLocaleString()} observed fares were flagged as statistically unusual at the current sensitivity setting (robust z-score > ${data.threshold}, deviation ≥ 25% from the cell median). ${data.event_window_count > 0 ? `${data.event_window_count} of these overlap a team-authored illustrative event window.` : 'None overlap an illustrative event window.'}`
               : 'Scanning observations for statistically unusual fares…',
           },
           {
@@ -604,8 +632,8 @@ export default function Spikes() {
                       </Pill>
                     </td>
                     <td className="py-2 text-right">
-                      <Pill tone={exposureTone(s.exposure_proxy)}>
-                        {s.exposure_proxy}
+                      <Pill tone={s.exposure_proxy_available ? exposureTone(s.exposure_proxy) : 'neutral'}>
+                        {s.exposure_proxy_available ? s.exposure_proxy : 'N/A'}
                       </Pill>
                     </td>
                     <td className="py-2 text-right">

@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import sqlite3
 
 from app.api.queries import fetch_data_source_types, fetch_filter_options, fetch_observations
+from app.api.regulatory import router as regulatory_router
 from app.audit import calculation_audit
 from app.config import settings
 from app.db.database import (
@@ -75,6 +76,8 @@ app = FastAPI(
         {"name": "system",    "description": "Health, version, and provider status"},
     ],
 )
+
+app.include_router(regulatory_router)
 
 # Production auth boundary: deployment should sit behind MoSPI SSO or an
 # equivalent identity proxy. Development CORS is restricted to configured
@@ -205,6 +208,7 @@ def _analysis_dataset_summary() -> dict:
     return {
         **_dataset_summary([active] if active else []),
         "active_analysis_source": active,
+        "live_only": settings.live_only,
         "available_analysis_sources": available,
         "source_isolation_notice": (
             "Analytical endpoints use only the active provenance source; "
@@ -262,11 +266,11 @@ def _insert_live_observations(rows: list[dict], batch_id: str,
             "INSERT INTO observations (origin, destination, airline, travel_date, quote_date,"
             " lead_days, lead_bucket, fare_class, base_fare, airline_surcharge,"
             " statutory_taxes, airport_charges, taxes_fees, total_fare,"
-            " source_batch_id, source_type, provider, flight_number, offer_id, offer_expiry)"
+            " source_batch_id, source_type, provider, flight_number, offer_id, offer_expiry, departure_time, arrival_time, price_status)"
             " VALUES (:origin, :destination, :airline, :travel_date, :quote_date,"
             " :lead_days, :lead_bucket, :fare_class, :base_fare, :airline_surcharge,"
             " :statutory_taxes, :airport_charges, :taxes_fees, :total_fare,"
-            " :batch_id, :source_type, :provider, :flight_number, :offer_id, :offer_expiry)"
+            " :batch_id, :source_type, :provider, :flight_number, :offer_id, :offer_expiry, :departure_time, :arrival_time, :price_status)"
         )
         for row in rows:
             try:
@@ -278,6 +282,9 @@ def _insert_live_observations(rows: list[dict], batch_id: str,
                     "flight_number": row.get("flight_number"),
                     "offer_id": row.get("offer_id"),
                     "offer_expiry": row.get("offer_expiry"),
+                    "departure_time": row.get("departure_time"),
+                    "arrival_time": row.get("arrival_time"),
+                    "price_status": row.get("price_status"),
                 })
             except sqlite3.IntegrityError:
                 rejected.append({
@@ -324,6 +331,7 @@ def version() -> dict:
         "project": "SIH 26056 — FarePulse India Airfare Basket Monitoring Prototype",
         "ministry": "Ministry of Statistics and Programme Implementation (MoSPI)",
         "demo_mode": settings.demo_mode,
+        "live_only": settings.live_only,
         **_operating_mode(),
         **_analysis_dataset_summary(),
         "live_provider_configured": provider is not None,
@@ -351,7 +359,7 @@ def provider_status() -> dict:
 
     Shows which fare providers are configured and ready.  Credentials are
     never returned — only masked indicators.  Use this to verify the
-    Amadeus provider is set up before attempting live data ingestion.
+    live provider is set up before attempting live data ingestion.
     """
     statuses = get_provider_statuses()
     source_types = fetch_data_source_types()
@@ -393,6 +401,8 @@ def select_analysis_source(
     source_type: str = Query(..., pattern="^(demo|imported|live)$"),
 ) -> dict:
     """Switch analysis to one stored provenance cohort without merging sources."""
+    if settings.live_only and source_type != "live":
+        raise HTTPException(409, "Only live observations can be analyzed in live-only mode.")
     available = fetch_data_source_types()
     if source_type not in available:
         raise HTTPException(
@@ -410,22 +420,36 @@ def overview(granularity: str = Query("day", pattern="^(day|week)$")) -> dict:
     if not observations:
         return {
             "empty": True,
-            "message": "No data loaded. Go to the Admin page and load the sample dataset.",
+            "live_only": settings.live_only,
+            "message": "No live quotes yet. Fetch routes from Admin." if settings.live_only else "No data loaded. Go to the Admin page and load the sample dataset.",
         }
 
     series = compute_index_timeseries(observations, granularity=granularity)
     spikes = detect_spikes(observations)
     fares = [o["total_fare"] for o in observations]
     coverage = coverage_report(observations)
+    latest = series[-1] if series else None
+    first = series[0] if series else None
     publication_quality = coverage["quality_flag"]
     if publication_quality == "RED":
-        indicator_name = "Experimental Basket Indicator"
-        publication_status = "SUPPRESSED"
-        suppression_reason = (
-            f"National headline suppressed: mean matched weight coverage is "
-            f"{coverage['mean_weight_coverage_pct']:.1f}%, below the 80% minimum. "
-            "The displayed value is experimental and must not be quoted as a national index."
+        indicator_name = (
+            "Experimental Unweighted Basket Indicator"
+            if coverage.get("weighted_cells", 0) == 0
+            else "Experimental Basket Indicator"
         )
+        publication_status = "SUPPRESSED"
+        if not coverage.get("weighting_complete", False):
+            suppression_reason = (
+                "National headline suppressed: one or more analysed cells have no "
+                "reviewed prototype route weight. The displayed value is exploratory "
+                "and must not be quoted as a weighted national index."
+            )
+        else:
+            suppression_reason = (
+                f"National headline suppressed: mean matched weight coverage is "
+                f"{coverage['mean_weight_coverage_pct']:.1f}%, below the 80% minimum. "
+                "The displayed value is experimental and must not be quoted as a national index."
+            )
     elif publication_quality == "AMBER":
         indicator_name = "Provisional Airfare Basket Indicator"
         publication_status = "PROVISIONAL"
@@ -437,8 +461,6 @@ def overview(granularity: str = Query("day", pattern="^(day|week)$")) -> dict:
         publication_status = "PUBLISHABLE_PROTOTYPE"
         suppression_reason = None
 
-    latest = series[-1] if series else None
-    first = series[0] if series else None
     change_pct = None
     if latest and first and first["apix_value"]:
         change_pct = round(
@@ -468,8 +490,24 @@ def overview(granularity: str = Query("day", pattern="^(day|week)$")) -> dict:
         "last_updated": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
         "evidence": {
             "data_source": _observation_source_label(observations),
-            "calculation_method": "Weighted Laspeyres with Jevons elementary aggregates",
-            "formula": "APIx[t] = 100 \u00d7 \u03a3 (W[cell]/\u03a3W) \u00d7 R[cell,t]",
+            "calculation_method": (
+                "Unweighted Jevons fallback; weighted publication unavailable"
+                if latest
+                and latest.get("aggregation_method") == "unweighted_jevons_fallback"
+                else (
+                    "Partial prototype-weight subset; weighted publication unavailable"
+                    if latest
+                    and latest.get("aggregation_method")
+                    == "partial_prototype_weighted_subset"
+                    else "Prototype-weighted Laspeyres with Jevons elementary aggregates"
+                )
+            ),
+            "formula": (
+                "Jevons[t] = 100 \u00d7 exp(mean(ln R[cell,t]))"
+                if latest
+                and latest.get("aggregation_method") == "unweighted_jevons_fallback"
+                else "APIx[t] = 100 \u00d7 \u03a3 (W[cell]/\u03a3W) \u00d7 R[cell,t]"
+            ),
             "baseline": f"Base = 100 at {first['period'] if first else 'N/A'}",
             "sensitivity_formula": "Jevons[t] = 100 \u00d7 exp(mean(ln R[cell,t]))",
             "alert_formula": "robust_z = 0.6745 \u00d7 (ln(fare) \u2212 median(ln fare)) / MAD",
@@ -477,6 +515,7 @@ def overview(granularity: str = Query("day", pattern="^(day|week)$")) -> dict:
             "alert_min_deviation_pct": 25.0,
             "cell_definition": "route \u00d7 airline \u00d7 fare class \u00d7 lead-time bucket",
             "weight_source": "Illustrative traffic-proportional prototype weights; current DGCA calibration required",
+            "weighting_status": coverage["weighting_notice"],
             "audit": calculation_audit(
                 observations,
                 "overview-index",
@@ -555,10 +594,11 @@ def trends(
 @app.get("/api/compare", tags=["analysis"])
 def compare(
     dimension: str = Query("route", pattern="^(route|airline)$"),
+    airline: str | None = None,
     fare_class: str | None = None,
     lead_bucket: str | None = None,
 ) -> dict:
-    observations = fetch_observations(fare_class=fare_class, lead_bucket=lead_bucket)
+    observations = fetch_observations(airline=airline, fare_class=fare_class, lead_bucket=lead_bucket)
     if not observations:
         return {"empty": True, "rows": []}
 
@@ -585,6 +625,8 @@ def compare(
             "delta": idx.get("delta"),
             "change_pct": idx.get("change_pct"),
             "cell_count": idx.get("cell_count"),
+            "aggregation_method": idx.get("aggregation_method"),
+            "weighting_complete": idx.get("weighting_complete", False),
             "observation_count": len(obs),
             "airline_count": len({o["airline"] for o in obs}) if dimension == "route" else None,
             "route_count": len({(o["origin"], o["destination"]) for o in obs})
@@ -597,12 +639,28 @@ def compare(
 
 @app.get("/api/contributions", tags=["analysis"])
 def contributions(granularity: str = Query("day", pattern="^(day|week)$")) -> dict:
-    """Contribution decomposition: how much each cell contributed to headline change."""
+    """Endpoint-matched weighted-cell contribution decomposition."""
     observations = fetch_observations()
     if not observations:
-        return {"empty": True, "contributions": []}
+        return {
+            "empty": True,
+            "available": False,
+            "comparison_basis": "cells_observed_in_both_endpoint_periods",
+            "notice": "No observations are loaded.",
+            "contributions": [],
+        }
     contribs = compute_contributions(observations, granularity=granularity)
-    return {"empty": False, "contributions": contribs[:50]}
+    return {
+        "empty": False,
+        "available": bool(contribs),
+        "comparison_basis": "cells_observed_in_both_endpoint_periods",
+        "notice": (
+            None
+            if contribs
+            else "No prototype-weighted cells are observed in both endpoint periods."
+        ),
+        "contributions": contribs[:50],
+    }
 
 
 @app.get("/api/sensitivity", tags=["analysis"])
@@ -610,16 +668,32 @@ def sensitivity(granularity: str = Query("day", pattern="^(day|week)$")) -> dict
     """Weighted vs unweighted index sensitivity analysis."""
     observations = fetch_observations()
     if not observations:
-        return {"empty": True}
+        return {
+            "empty": True,
+            "periods": 0,
+            "max_divergence_pts": 0.0,
+            "mean_divergence_pts": 0.0,
+            "warning": True,
+            "aggregation_method": None,
+            "weighting_complete": False,
+            "series": [],
+        }
     result = sensitivity_weighted_vs_unweighted(observations, granularity)
     series = compute_index_timeseries(observations, granularity=granularity, weighted=True)
+    latest = series[-1] if series else None
     return {
         "empty": False,
         **result,
+        "aggregation_method": latest.get("aggregation_method") if latest else None,
+        "weighting_complete": latest.get("weighting_complete", False) if latest else False,
+        "warning": result.get("warning", False)
+        or not (latest.get("weighting_complete", False) if latest else False),
         "series": [
             {"period": s["period"],
              "weighted": s["apix_weighted"],
              "unweighted": s["apix_unweighted"],
+             "aggregation_method": s["aggregation_method"],
+             "weighting_complete": s["weighting_complete"],
              "divergence": round(abs(s["apix_weighted"] - s["apix_unweighted"]), 2)}
             for s in series
         ],
@@ -652,10 +726,10 @@ def vulnerability(
     fare_class: str | None = None,
 ) -> dict:
     """
-    Lead-Time Vulnerability Index by booking window.
+    Lead-Time Vulnerability Signal by booking window.
 
     Combines fare deviation, alert frequency, booking urgency, and coverage
-    confidence into a 0–100 score for each lead-time bucket.  Optional filters
+    evidence confidence into a 0–100 heuristic score for each lead-time bucket. Optional filters
     narrow the analysis to a specific route, carrier, or fare class.
     """
     observations = fetch_observations(
@@ -690,7 +764,8 @@ def competition() -> dict:
     """
     Per-route competition monitoring signals.
 
-    Returns carrier count, HHI concentration proxy, fare pressure level, and a
+    Returns observed-carrier count, an observation-share HHI-like proxy,
+    raw fare-level cross-check, and a
     summary status (Healthy / Watch / High Risk) for every route in the dataset.
     These are statistical monitoring indicators — not legal findings of
     anti-competitive behaviour.
@@ -731,7 +806,7 @@ def events() -> dict:
     """
     return {
         "demo_notice": DEMO_NOTICE,
-        "events": get_all_events(),
+        "events": [] if settings.live_only else get_all_events(),
     }
 
 
@@ -767,7 +842,7 @@ def fairness() -> dict:
     Fairness Lens — like-for-like index movement by route category.
 
     Compares each category's matched-cell index change with basket index change,
-    alongside alert rate and the passenger exposure proxy. Unknown imported/live
+    alongside alert rate and the explicitly uncalibrated exposure proxy. Unknown imported/live
     routes remain in an explicit Unclassified bucket.
 
     These are monitoring indicators for policy context, not findings of
@@ -823,11 +898,24 @@ def spikes(threshold: float = Query(3.5, ge=1.0, le=10.0)) -> dict:
 
 @app.post("/api/admin/load-sample", tags=["data"])
 def load_sample() -> dict:
+    if settings.live_only:
+        raise HTTPException(409, "Synthetic data loading is disabled in live-only mode.")
     if not SAMPLE_CSV.exists():
         raise HTTPException(500, "Sample dataset missing. Run the generator script.")
 
-    reset_db()
     accepted, quarantined = validate_rows(SAMPLE_CSV.read_text())
+    # Validate the bundled artifact before the destructive reset.  A missing,
+    # truncated, or accidentally edited sample must never wipe a user's current
+    # working dataset and then leave the demo empty.
+    expected_rows = 23_558
+    if len(accepted) != expected_rows or quarantined:
+        raise HTTPException(
+            500,
+            "Bundled sample failed its integrity check; existing data was left unchanged. "
+            "Regenerate backend/app/seed/sample_airfares.csv before retrying.",
+        )
+
+    reset_db()
     batch_id = f"sample-{uuid.uuid4().hex[:8]}"
     final_rejected = _insert_observations(
         accepted, batch_id, SAMPLE_CSV.name, quarantined, source_type="demo"
@@ -857,21 +945,27 @@ async def upload(file: UploadFile = File(...)) -> dict:
 
     File size is limited to keep upload safe for the demo environment.
     """
+    if settings.live_only:
+        raise HTTPException(409, "CSV ingestion is disabled in live-only mode.")
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(400, "Please upload a .csv file.")
 
-    raw_bytes = await file.read()
+    # Bound the read itself, not only the post-read length.  This prevents an
+    # oversized multipart body from being fully materialised in process memory.
+    raw_bytes = await file.read(settings.upload_max_bytes + 1)
     if len(raw_bytes) > settings.upload_max_bytes:
         max_mb = settings.upload_max_bytes / (1024 * 1024)
         raise HTTPException(
             413,
-            f"File too large ({len(raw_bytes):,} bytes). "
-            f"Maximum allowed is {max_mb:.1f} MB ({settings.upload_max_bytes:,} bytes). "
+            f"File exceeds the {max_mb:.1f} MB "
+            f"({settings.upload_max_bytes:,} byte) limit. "
             "Split the file into smaller batches.",
         )
 
     try:
-        text = raw_bytes.decode("utf-8")
+        # utf-8-sig accepts ordinary UTF-8 and strips the BOM commonly emitted
+        # by spreadsheet exports, preventing a false "missing origin" header.
+        text = raw_bytes.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise HTTPException(400, "File must be UTF-8 encoded text.")
 
@@ -899,14 +993,20 @@ def batches() -> dict:
     with db_session() as conn:
         rows = conn.execute(
             "SELECT b.*, (SELECT COUNT(*) FROM observations o"
-            " WHERE o.source_batch_id = b.batch_id) AS live_rows"
+            " WHERE o.source_batch_id = b.batch_id) AS stored_rows,"
+            " (SELECT COUNT(*) FROM observations o"
+            " WHERE o.source_batch_id = b.batch_id"
+            " AND o.source_type = 'live') AS live_rows"
             " FROM ingestion_batches b ORDER BY uploaded_at DESC"
         ).fetchall()
         return {"batches": [dict(r) for r in rows]}
 
 
 @app.get("/api/admin/observations", tags=["data"])
-def observations_table(limit: int = Query(100, ge=1, le=1000), offset: int = 0) -> dict:
+def observations_table(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+) -> dict:
     with db_session() as conn:
         total = conn.execute("SELECT COUNT(*) AS c FROM observations").fetchone()["c"]
         rows = conn.execute(
@@ -948,7 +1048,8 @@ def live_fetch(quick: bool = Query(False)) -> dict:
         raise HTTPException(
             503,
             "No live fare provider is configured.  "
-            "Set AMADEUS_CLIENT_ID and AMADEUS_CLIENT_SECRET in .env and restart.",
+            "Set IGNAV_API_KEY (preferred) or both AMADEUS_CLIENT_ID and "
+            "AMADEUS_CLIENT_SECRET in backend/.env and restart.",
         )
 
     fetch_result = fetch_live_fares(provider, quick=quick)
@@ -1041,18 +1142,46 @@ def export_observations(
     )
     buffer = io.StringIO()
     summary = _dataset_summary([r.get("source_type", "imported") for r in rows])
-    buffer.write(
-        f"# FarePulse export — {summary['dataset_label']}; "
-        "advertised/observed fares, not transaction prices or an official statistical release\n"
+    # Keep the first row as a real CSV header so an export can be fed back into
+    # the validator or another standards-compliant tool.  Provenance belongs in
+    # HTTP metadata rather than a non-standard comment preamble.
+    fieldnames = list(rows[0].keys()) if rows else [
+        "origin",
+        "destination",
+        "airline",
+        "travel_date",
+        "quote_date",
+        "fare_class",
+        "base_fare",
+        "taxes_fees",
+        "total_fare",
+    ]
+    writer = csv.DictWriter(
+        buffer,
+        fieldnames=fieldnames,
+        lineterminator="\n",
     )
+    writer.writeheader()
     if rows:
-        writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
         writer.writerows(rows)
 
     buffer.seek(0)
     return StreamingResponse(
         iter([buffer.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=apix_observations.csv"},
+        headers={
+            "Content-Disposition": 'attachment; filename="farepulse_observations.csv"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "X-FarePulse-Dataset-Mode": str(summary["dataset_mode"]),
+            "X-FarePulse-Active-Source": str(
+                rows[0].get("source_type")
+                if rows
+                else (get_active_source_type() or "none")
+            ),
+        },
     )
+
+# Separate router keeps the existing synchronous basket fetch API compatible.
+from app.national import router as network_router
+app.include_router(network_router)

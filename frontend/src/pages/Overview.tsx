@@ -40,6 +40,8 @@ import {
   StatTile,
 } from '../components/ui'
 import { useJudgeMode } from '../context/judgeModeContext'
+import RouteAtlas from '../components/route-map/RouteAtlas'
+import AviationScene from '../components/AviationScene'
 
 function DataSourceBadge({ sourceTypes }: { sourceTypes: string[] }) {
   const hasLive = sourceTypes.includes('live')
@@ -57,7 +59,7 @@ function DataSourceBadge({ sourceTypes }: { sourceTypes: string[] }) {
   if (hasLive) {
     return (
       <span className="rounded border border-green-500/40 bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
-        Live quote snapshots
+        Live fare quote snapshots
       </span>
     )
   }
@@ -77,6 +79,9 @@ function DataSourceBadge({ sourceTypes }: { sourceTypes: string[] }) {
 
 export default function Overview() {
   const { judgeMode } = useJudgeMode()
+  const [sourceRevision, setSourceRevision] = useState(0)
+  const [analysisOpen, setAnalysisOpen] = useState(false)
+
   const [data, setData] = useState<OverviewData | null>(null)
   const [filterOpts, setFilterOpts] = useState<FilterOptions | null>(null)
   const [spikeData, setSpikeData] = useState<{ flagged: Spike[]; flagged_count: number; scanned_count: number } | null>(null)
@@ -90,8 +95,14 @@ export default function Overview() {
     error: string
   } | null>(null)
   const [error, setError] = useState('')
+  const [partialError, setPartialError] = useState('')
   const [loading, setLoading] = useState(true)
   const [startingDemo, setStartingDemo] = useState(false)
+  useEffect(() => {
+    const refresh = () => { setLoading(true); setSourceRevision((value) => value + 1) }
+    window.addEventListener('farepulse-data-changed', refresh)
+    return () => window.removeEventListener('farepulse-data-changed', refresh)
+  }, [])
 
   // Filters
   const [granularity, setGranularity] = useState('day')
@@ -103,12 +114,12 @@ export default function Overview() {
   const [dateTo, setDateTo] = useState('')
 
   const hasFilters = !!(route || airline || fareClass || leadBucket || dateFrom || dateTo)
-  const filterKey = [granularity, route, airline, fareClass, leadBucket, dateFrom, dateTo].join('|')
+  const filterKey = [sourceRevision, granularity, route, airline, fareClass, leadBucket, dateFrom, dateTo].join('|')
 
   // Fetch national overview + filters + spikes + compare data
   useEffect(() => {
     let cancelled = false
-    Promise.all([
+    Promise.allSettled([
       api.overview(granularity),
       api.filters(),
       api.spikes(3.5),
@@ -117,17 +128,36 @@ export default function Overview() {
     ])
       .then(([overview, filters, spikes, airlines, routes]) => {
         if (cancelled) return
-        setData(overview)
-        setFilterOpts(filters)
-        setSpikeData(spikes)
-        setAirlineRows(airlines.rows || [])
-        setRouteRows(routes.rows || [])
+        if (overview.status === 'rejected') {
+          setError(
+            overview.reason instanceof Error
+              ? overview.reason.message
+              : 'Overview data is unavailable.',
+          )
+          return
+        }
+        setData(overview.value)
+        setFilterOpts(filters.status === 'fulfilled' ? filters.value : null)
+        setSpikeData(spikes.status === 'fulfilled' ? spikes.value : null)
+        setAirlineRows(airlines.status === 'fulfilled' ? (airlines.value.rows || []) : [])
+        setRouteRows(routes.status === 'fulfilled' ? (routes.value.rows || []) : [])
+        const unavailable = [
+          filters.status === 'rejected' ? 'filters' : '',
+          spikes.status === 'rejected' ? 'alert preview' : '',
+          airlines.status === 'rejected' ? 'carrier comparison' : '',
+          routes.status === 'rejected' ? 'route comparison' : '',
+        ].filter(Boolean)
+        setPartialError(
+          unavailable.length
+            ? `Overview loaded; temporarily unavailable: ${unavailable.join(', ')}.`
+            : '',
+        )
         setError('')
       })
       .catch((e) => { if (!cancelled) setError(e.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [granularity, fareClass, leadBucket])
+  }, [sourceRevision, granularity, fareClass, leadBucket])
 
   // Fetch event calendar once (illustrative demo data)
   useEffect(() => {
@@ -199,8 +229,11 @@ export default function Overview() {
 
   if (loading) return <Spinner />
   if (error) return <ErrorNote message={error} />
+  if (data?.empty && data.live_only) return <div className="space-y-5"><EmptyState title="No live fare snapshots yet" body="Live-only mode is active. Fetch verified provider quotes in Admin; synthetic data is disabled." action={<Link to="/admin"><Button>Fetch live fares</Button></Link>}/><RouteAtlas/></div>
   if (!data || data.empty)
     return (
+      <div className="empty-overview">
+        <div className="empty-overview-scene"><AviationScene /></div>
       <EmptyState
         title="No data loaded yet"
         body="Load the bundled sample dataset — about 23,000 synthetic fare observations across 14 routes and 4 fictional carriers — to populate every screen."
@@ -215,6 +248,7 @@ export default function Overview() {
           </div>
         }
       />
+      </div>
     )
 
   const rising = (data.change_pct ?? 0) > 0
@@ -225,31 +259,40 @@ export default function Overview() {
   const chartLoading = hasFilters && activeFilteredTrends === null
   const chartError = activeFilteredTrends?.error ?? ''
   const qf = data.coverage.quality_flag
+  const chartMethod = chartSeries.at(-1)?.aggregation_method
+  const chartIsUnweightedFallback = chartMethod === 'unweighted_jevons_fallback'
+  const chartIsPartialWeighting = chartMethod === 'partial_prototype_weighted_subset'
+  const primarySeriesLabel = chartIsUnweightedFallback
+    ? 'Unweighted Jevons (fallback)'
+    : chartIsPartialWeighting
+      ? 'Prototype-weighted subset (not publishable)'
+      : 'Prototype-weighted Laspeyres'
 
   return (
     <div className="space-y-5">
       {/* ───────────────────────── HEADER ───────────────────────── */}
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header className="overview-page-header atlas-overview-heading">
         <div>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="font-serif text-[26px] leading-tight tracking-tight">{data.indicator_name}</h1>
-            <DataSourceBadge sourceTypes={filterOpts?.source_types?.length ? filterOpts.source_types : []} />
-          </div>
-          <p className="mt-1.5 text-[13px] text-muted">
-            <span className="font-mono text-[12px]">{data.period_start}</span>
-            {' '}to{' '}
-            <span className="font-mono text-[12px]">{data.period_end}</span>
-            {' '}·{' '}{data.observation_count.toLocaleString()} observations
-            {' '}·{' '}{data.route_count} routes
-            {' '}·{' '}{data.airline_count} carriers
-          </p>
-          {data.last_updated && (
-            <p className="mt-0.5 text-[11.5px] text-muted">
-              Last updated: <span className="font-mono text-[11px]">{data.last_updated}</span>
-            </p>
-          )}
+          <div className="page-eyebrow">WORKSPACE <span>/</span> OVERVIEW</div>
+          <h1>Airfares across India<span className="heading-period">.</span></h1>
+          <p>Explore routes, compare fares, and spot unusual prices.</p>
         </div>
-        <div className="flex flex-col items-end gap-2">
+      </header>
+
+      <div className="overview-quick-stats" aria-label="Fare summary">
+        <div><span>Median fare</span><strong>{formatINR(data.median_fare)}</strong></div>
+        <div><span>Routes observed</span><strong>{data.route_count}</strong></div>
+        <div><span>Fare quotes</span><strong>{data.observation_count.toLocaleString('en-IN')}</strong></div>
+        <Link to="/spikes"><span>Fare alerts <span aria-hidden="true">↗</span></span><strong>{data.spike_count}</strong></Link>
+      </div>
+
+      <RouteAtlas />
+
+      <details className="overview-analysis" open={judgeMode || analysisOpen} onToggle={event => setAnalysisOpen(event.currentTarget.open)}>
+        <summary><span>Detailed analysis</span><small>Trends, comparisons &amp; methodology</small></summary>
+        {(judgeMode || analysisOpen) && <div className="overview-analysis-body space-y-5">
+        <div className="overview-period-control">
+          <span className="period-window">{data.period_start} <span aria-hidden="true">→</span> {data.period_end}</span>
           <div className="flex gap-1 rounded-md border border-line bg-surface p-1">
             {[
               { value: 'day', label: 'Daily' },
@@ -257,7 +300,9 @@ export default function Overview() {
             ].map((g) => (
               <button
                 key={g.value}
+                type="button"
                 onClick={() => setGranularity(g.value)}
+                aria-pressed={granularity === g.value}
                 className={`rounded px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
                   granularity === g.value ? 'bg-accent-soft text-accent' : 'text-muted hover:text-ink'
                 }`}
@@ -267,7 +312,30 @@ export default function Overview() {
             ))}
           </div>
         </div>
-      </header>
+      <section className="flight-deck" aria-label="Basket monitoring summary">
+        <div className="flight-deck-summary">
+          <div className="deck-eyebrow"><span /> INDIA · BASKET MONITOR</div>
+          <h2>{data.indicator_name}</h2>
+          <div className="deck-index">
+            <strong className="tnum">{data.headline_index?.toFixed(2) ?? '—'}</strong>
+            <span className="deck-change"><Delta value={data.change_pct} suffix="%" /><small>over observation window</small></span>
+          </div>
+          <p className="deck-baseline">Base = 100 <span>·</span> {data.period_start}</p>
+          <div className="deck-source"><DataSourceBadge sourceTypes={filterOpts?.active_source_type ? [filterOpts.active_source_type] : []} /></div>
+          <div className="deck-observations"><strong className="tnum">{data.observation_count.toLocaleString()}</strong> observations <span>·</span> {data.route_count} routes <span>·</span> {data.airline_count} carriers</div>
+          {data.last_updated && <p className="deck-updated">Dataset updated {data.last_updated}</p>}
+        </div>
+        <AviationScene />
+      </section>
+
+      <div className="overview-stat-grid">
+        <StatTile label="Active alerts" value={data.spike_count}
+          tone={data.spike_count > 0 ? 'alert' : 'ok'} hint={data.spike_count > 0 ? 'Observations flagged as unusual' : 'No anomalies detected'} />
+        <StatTile label="Median fare" value={formatINR(data.median_fare)} hint="Across the active source" />
+        <StatTile label="Route coverage" value={data.route_count} hint={`${data.airline_count} carriers · ${data.observation_count.toLocaleString()} observations`} />
+        <StatTile label="Data quality" value={qf} tone={qf === 'GREEN' ? 'ok' : qf === 'AMBER' ? 'warn' : 'alert'}
+          hint={`${data.coverage.mean_weight_coverage_pct}% matched weight coverage · ${data.coverage.total_cells} cells`} />
+      </div>
 
       {data.suppression_reason && (
         <div
@@ -284,6 +352,15 @@ export default function Overview() {
       )}
 
       {/* ───────────────────────── JUDGE MODE ───────────────────────── */}
+      {partialError && (
+        <div
+          className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-[12px] text-amber-900"
+          role="status"
+        >
+          {partialError}
+        </div>
+      )}
+
       {judgeMode && (
         <JudgePanel items={[
           {
@@ -306,9 +383,11 @@ export default function Overview() {
           },
           {
             q: 'How confident are we?',
-            a: `Panel coverage is ${data.coverage.mean_coverage_pct}% — quality flag: ${qf}. ${
-              qf === 'GREEN'
-                ? 'Over 90% of comparability cells reported data; the index is well-supported.'
+            a: `Cell coverage is ${data.coverage.mean_coverage_pct}% and matched prototype-weight coverage is ${data.coverage.mean_weight_coverage_pct}% — quality flag: ${qf}. ${
+              !data.coverage.weighting_complete
+                ? data.coverage.weighting_notice
+                : qf === 'GREEN'
+                ? 'At least 90% of matched prototype basket weight is observed for the period.'
                 : qf === 'AMBER'
                 ? '80–90% coverage — some cells are sparse; treat the headline as indicative.'
                 : 'Below 80% coverage — the national headline is suppressed and only an experimental basket value is shown.'
@@ -331,8 +410,8 @@ export default function Overview() {
 
       {/* ───────────────────────── FILTERS ───────────────────────── */}
       {filterOpts && (
-        <Card>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+        <Card className="overview-filters">
+          <div className="filter-grid">
             <Field label="Route">
               <Select
                 value={route}
@@ -390,58 +469,11 @@ export default function Overview() {
           {hasFilters && (
             <div className="mt-3 flex items-center gap-2 text-[12px] text-accent">
               <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-              Filters active — chart shows filtered data; stat cards show national totals
+              Filters active — chart shows filtered data; stat cards show active-basket totals
             </div>
           )}
         </Card>
       )}
-
-      {/* ───────────────────────── STAT CARDS ───────────────────────── */}
-      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
-        <StatTile
-          label={data.headline_publishable ? 'Prototype index' : 'Experimental indicator'}
-          value={data.headline_index?.toFixed(2) ?? '—'}
-          hint={`Base = 100 · ${data.period_start}`}
-        />
-        <StatTile
-          label="Index change"
-          value={
-            data.change_pct != null ? (
-              <span className={rising ? 'text-alert' : 'text-ok'}>
-                {rising ? '+' : ''}{data.change_pct.toFixed(2)}%
-              </span>
-            ) : '—'
-          }
-          tone={data.change_pct != null && rising ? 'alert' : data.change_pct != null && !rising ? 'ok' : 'default'}
-          hint={rising ? 'Fares rose over window' : 'Fares eased over window'}
-        />
-        <StatTile
-          label="Active alerts"
-          value={data.spike_count}
-          tone={data.spike_count > 0 ? 'alert' : 'ok'}
-          hint={data.spike_count > 0 ? 'Flagged as unusual' : 'No anomalies detected'}
-        />
-        <StatTile
-          label="Median fare"
-          value={formatINR(data.median_fare)}
-          hint="Across all observations"
-        />
-        <StatTile
-          label="Route coverage"
-          value={`${data.route_count}`}
-          hint={`${data.airline_count} carriers · ${data.observation_count.toLocaleString()} obs.`}
-        />
-        <StatTile
-          label="Data quality"
-          value={
-            <span className={qf === 'GREEN' ? 'text-ok' : qf === 'AMBER' ? 'text-warn' : 'text-alert'}>
-              {qf}
-            </span>
-          }
-          tone={qf === 'GREEN' ? 'ok' : qf === 'AMBER' ? 'warn' : 'alert'}
-          hint={`${data.coverage.mean_coverage_pct}% panel coverage · ${data.coverage.total_cells} cells`}
-        />
-      </div>
 
       {/* ───────────────────────── EVIDENCE TRAIL (overview metrics) ───────────────────────── */}
       {data.evidence && (
@@ -457,6 +489,7 @@ export default function Overview() {
               { label: 'Baseline', value: data.evidence.baseline },
               { label: 'Sensitivity formula', value: data.evidence.sensitivity_formula, mono: true },
               { label: 'Weight source', value: data.evidence.weight_source },
+              { label: 'Weighting status', value: data.evidence.weighting_status },
               { label: 'Cell definition', value: data.evidence.cell_definition },
               { label: 'Coverage', value: `${data.coverage.mean_coverage_pct}% cell coverage · quality ${qf} · ${data.coverage.total_cells} cells` },
               { label: 'Publication status', value: `${data.publication_status}${data.suppression_reason ? ` · ${data.suppression_reason}` : ''}` },
@@ -482,8 +515,8 @@ export default function Overview() {
         }
         subtitle={
           hasFilters
-            ? 'Filtered view · Weighted Laspeyres headline vs Jevons sensitivity · Values above 100 indicate fares higher than start of window'
-            : 'Weighted Laspeyres headline (solid) vs Jevons sensitivity check (dashed) · Above 100 = fares higher than start of period'
+            ? `Filtered view · ${primarySeriesLabel} vs Jevons sensitivity · Above 100 means matched fares exceed their starting level`
+            : `${primarySeriesLabel} (solid) vs Jevons sensitivity (dashed) · Above 100 means matched fares exceed their starting level`
         }
         action={
           <div className="flex items-center gap-2">
@@ -523,7 +556,7 @@ export default function Overview() {
               {...tooltipProps}
               formatter={(value: unknown, name: unknown) => [
                 chartNumber(value).toFixed(2),
-                chartLabel(name) === 'apix_weighted' ? 'Weighted (headline)' : 'Unweighted (sensitivity)',
+                chartLabel(name) === 'apix_weighted' ? primarySeriesLabel : 'Unweighted Jevons',
               ]}
             />
             <Area
@@ -551,7 +584,7 @@ export default function Overview() {
         {!chartError && !chartLoading && chartSeries.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[11.5px] text-muted">
             <span className="flex items-center gap-1.5">
-              <span className="h-0.5 w-4 bg-accent" /> Weighted Laspeyres (headline)
+              <span className="h-0.5 w-4 bg-accent" /> {primarySeriesLabel}
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-0.5 w-4 border-b border-dashed border-warn" /> Unweighted Jevons
@@ -785,7 +818,7 @@ export default function Overview() {
                     </td>
                     <td className="py-1.5 text-right">
                       <Pill tone={s.exposure_proxy >= 61 ? 'alert' : s.exposure_proxy >= 31 ? 'warn' : 'neutral'}>
-                        {s.exposure_proxy}
+                          {s.exposure_proxy_available ? s.exposure_proxy : 'N/A'}
                       </Pill>
                     </td>
                   </tr>
@@ -801,7 +834,7 @@ export default function Overview() {
       </Card>
 
       {/* ───────────────────── EVENT CALENDAR ───────────────────── */}
-      {eventError ? (
+      {filterOpts?.active_source_type === 'demo' && (eventError ? (
         <Card title="Event sensitivity calendar" subtitle="Illustrative context layer">
           <ErrorNote message={eventError} />
         </Card>
@@ -816,9 +849,9 @@ export default function Overview() {
           }
         >
           <div className="mb-3 rounded-md border border-[#f0dcbb] bg-[#fdf4e7] px-3.5 py-2.5 text-[11.5px] leading-relaxed text-warn/90">
-            All event dates and typical-surge estimates are illustrative demo data derived from public
-            holiday calendars. They use approximate MM-DD ranges that repeat annually. Do not use for
-            regulatory or commercial purposes.
+            Event windows and uplift assumptions are team-authored illustrative demo context.
+            They use approximate MM-DD ranges that repeat annually and are neither a cited,
+            year-aware calendar nor evidence of causality.
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {eventCalendar.map((ev) => {
@@ -839,16 +872,18 @@ export default function Overview() {
                     </span>
                   </div>
                   <div className="mt-0.5 text-[10.5px] font-medium opacity-70">{ev.category_label}</div>
-                  <div className="mt-1 text-[11px] leading-relaxed opacity-80">{ev.description}</div>
+                  <div className="mt-1 text-[11px] leading-relaxed opacity-80">
+                    Illustrative scenario: {ev.description}
+                  </div>
                   <div className="mt-1.5 text-[10.5px] opacity-60">
-                    Typical uplift: ~{ev.typical_surge_pct}%
+                    Assumed uplift: ~{ev.typical_surge_pct}%
                   </div>
                 </div>
               )
             })}
           </div>
         </Card>
-      )}
+      ))}
 
       {/* ───────────────────── HOW THE INDEX WORKS ───────────────────── */}
       <Card
@@ -923,6 +958,8 @@ export default function Overview() {
           </div>
         </div>
       </Card>
+        </div>}
+      </details>
     </div>
   )
 }
